@@ -68,14 +68,13 @@ func NewGostgrator(cfg Config, db *sql.DB) (*Gostgrator, error) {
 	}, nil
 }
 
-// GetMigrations scans for migration files and loads them into Gostgrator.
-func (g *Gostgrator) GetMigrations() error {
-	migs, err := GetMigrations(g.cfg)
-	if err != nil {
-		return err
-	}
-	g.migrations = migs
-	return nil
+func (g *Gostgrator) GetMigrations() ([]Migration, error) {
+    migs, err := GetMigrations(g.cfg)
+    if err != nil {
+        return nil, err
+    }
+    g.migrations = migs
+    return migs, nil
 }
 
 // RunQuery is a helper to execute a query using the underlying client.
@@ -116,7 +115,8 @@ func (g *Gostgrator) GetDatabaseVersion(ctx context.Context) (int, error) {
 // GetMaxVersion returns the highest migration version available.
 func (g *Gostgrator) GetMaxVersion() (int, error) {
 	if len(g.migrations) == 0 {
-		if err := g.GetMigrations(); err != nil {
+		_, err := g.GetMigrations()
+		if err != nil {
 			return 0, err
 		}
 	}
@@ -131,7 +131,8 @@ func (g *Gostgrator) GetMaxVersion() (int, error) {
 
 // ValidateMigrations verifies that applied migrations have not changed by comparing MD5 checksums.
 func (g *Gostgrator) ValidateMigrations(ctx context.Context, databaseVersion int) error {
-	if err := g.GetMigrations(); err != nil {
+	_, err := g.GetMigrations()
+	if err != nil {
 		return err
 	}
 	for _, m := range g.migrations {
@@ -169,7 +170,7 @@ func (g *Gostgrator) RunMigrations(ctx context.Context, migrations []Migration) 
 			return applied, err
 		}
 		persistSQL := g.client.PersistActionSql(m)
-		if _, err := g.client.RunQuery(ctx, persistSQL); err != nil {
+		if err := g.client.RunSqlScript(ctx, persistSQL); err != nil {
 			return applied, err
 		}
 		applied = append(applied, m)
@@ -210,8 +211,9 @@ func (g *Gostgrator) Migrate(ctx context.Context, target string) ([]Migration, e
 	if err := g.client.EnsureTable(ctx); err != nil {
 		return nil, err
 	}
-	if err := g.GetMigrations(); err != nil {
-		return nil, err
+	_, migErr := g.GetMigrations()
+	if migErr != nil {
+		return nil, migErr
 	}
 	var targetVersion int
 	var err error
