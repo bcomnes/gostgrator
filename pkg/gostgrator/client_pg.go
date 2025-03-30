@@ -30,17 +30,12 @@ func NewPostgresClient(cfg Config, db *sql.DB) Client {
 
 func (c *PostgresClient) getColumnsSql() string {
 	var tableCatalogSql string
-	if c.cfg.Database != "" {
-		tableCatalogSql = fmt.Sprintf("AND table_catalog = '%s'", c.cfg.Database)
-	}
 	parts := strings.Split(c.cfg.SchemaTable, ".")
 	tableName := parts[0]
 	var schemaSql string
 	if len(parts) > 1 {
 		tableName = parts[1]
 		schemaSql = fmt.Sprintf("AND table_schema = '%s'", parts[0])
-	} else if c.cfg.CurrentSchema != "" {
-		schemaSql = fmt.Sprintf("AND table_schema = '%s'", c.cfg.CurrentSchema)
 	}
 	return fmt.Sprintf(`
       SELECT column_name

@@ -23,8 +23,8 @@ func NewClient(cfg Config, db *sql.DB) (Client, error) {
 
 // Client defines the interface for migration clients.
 type Client interface {
-	RunQuery(ctx context.Context, query string) (*sql.Rows, error)
-	RunSqlScript(ctx context.Context, script string) error
+	QueryContext(ctx context.Context, query string) (*sql.Rows, error)
+	ExecContext(ctx context.Context, script string) (sql.Result, error)
 	GetDatabaseVersionSql() string
 	HasVersionTable(ctx context.Context) (bool, error)
 	EnsureTable(ctx context.Context) error
@@ -56,21 +56,14 @@ func (c *baseClient) quotedSchemaTable() string {
 	return c.cfg.SchemaTable
 }
 
-// RunQuery executes a query and sets search_path if needed.
-func (c *baseClient) RunQuery(ctx context.Context, query string) (*sql.Rows, error) {
-	if strings.ToLower(c.cfg.Driver) == "pg" && c.cfg.CurrentSchema != "" {
-		_, err := c.db.ExecContext(ctx, fmt.Sprintf("SET search_path = %s", c.cfg.CurrentSchema))
-		if err != nil {
-			return nil, err
-		}
-	}
+// Exposes the QueryContext method from the configured db connection.
+func (c *baseClient) QueryContext(ctx context.Context, query string) (*sql.Rows, error) {
 	return c.db.QueryContext(ctx, query)
 }
 
-// RunSqlScript executes a SQL script.
-func (c *baseClient) RunSqlScript(ctx context.Context, script string) error {
-	_, err := c.db.ExecContext(ctx, script)
-	return err
+// Exposing ExecContext from the configured db connection.
+func (c *baseClient) ExecContext(ctx context.Context, script string) (sql.Result, error) {
+	return c.db.ExecContext(ctx, script)
 }
 
 // PersistActionSql generates SQL to record a migration action.
@@ -113,7 +106,7 @@ func (c *baseClient) GetDatabaseVersionSql() string {
 // HasVersionTable checks for the existence of the migration table.
 func (c *baseClient) HasVersionTable(ctx context.Context) (bool, error) {
 	query := c.getColumnsSqlFn()
-	rows, err := c.RunQuery(ctx, query)
+	rows, err := c.QueryContext(ctx, query)
 	if err != nil {
 		return false, err
 	}
@@ -128,7 +121,7 @@ func (c *baseClient) HasVersionTable(ctx context.Context) (bool, error) {
 // EnsureTable creates the migration table if it does not exist and adds missing columns.
 func (c *baseClient) EnsureTable(ctx context.Context) error {
 	query := c.getColumnsSqlFn()
-	rows, err := c.RunQuery(ctx, query)
+	rows, err := c.QueryContext(ctx, query)
 	if err != nil {
 		return err
 	}
@@ -173,7 +166,7 @@ func (c *baseClient) EnsureTable(ctx context.Context) error {
 		sqls = append(sqls, c.getAddRunAtSqlFn())
 	}
 	for _, sqlStmt := range sqls {
-		if _, err := c.db.ExecContext(ctx, sqlStmt); err != nil {
+		if _, err := c.ExecContext(ctx, sqlStmt); err != nil {
 			return err
 		}
 	}

@@ -13,10 +13,6 @@ import (
 type Config struct {
 	// Driver is the database driver, e.g., "pg" or "sqlite3".
 	Driver string
-
-	// Database is the database name (used by some clients, e.g. PostgreSQL).
-	Database string
-
 	// SchemaTable is the name of the migration table.
 	SchemaTable string
 
@@ -25,9 +21,6 @@ type Config struct {
 
 	// Newline is the desired newline style ("LF", "CR", or "CRLF").
 	Newline string
-
-	// CurrentSchema is used for PostgreSQL if SchemaTable doesn’t include a dot.
-	CurrentSchema string
 
 	// ValidateChecksums indicates if the tool should validate migration checksums.
 	ValidateChecksums bool
@@ -77,14 +70,9 @@ func (g *Gostgrator) GetMigrations() ([]Migration, error) {
     return migs, nil
 }
 
-// RunQuery is a helper to execute a query using the underlying client.
-func (g *Gostgrator) RunQuery(ctx context.Context, query string) (*sql.Rows, error) {
-	return g.client.RunQuery(ctx, query)
-}
-
-// RunSqlScript executes a SQL script using the underlying client.
-func (g *Gostgrator) RunSqlScript(ctx context.Context, script string) error {
-	return g.client.RunSqlScript(ctx, script)
+// QueryContext is a helper to execute a query using the underlying client.
+func (g *Gostgrator) QueryContext(ctx context.Context, query string) (*sql.Rows, error) {
+	return g.client.QueryContext(ctx, query)
 }
 
 // GetDatabaseVersion returns the current database version.
@@ -98,7 +86,7 @@ func (g *Gostgrator) GetDatabaseVersion(ctx context.Context) (int, error) {
 	if !initialized {
 		return 0, nil
 	}
-	rows, err := g.client.RunQuery(ctx, versionSql)
+	rows, err := g.client.QueryContext(ctx, versionSql)
 	if err != nil {
 		return 0, err
 	}
@@ -129,6 +117,19 @@ func (g *Gostgrator) GetMaxVersion() (int, error) {
 	return max, nil
 }
 
+// Down rolls back the migrations by the given number of steps.
+// It computes the target version as the current version minus steps (not going below zero),
+// and then calls Migrate to perform the undo operations.
+func (g *Gostgrator) Down(ctx context.Context, steps int) ([]Migration, error) {
+	currentVersion, err := g.GetDatabaseVersion(ctx)
+	if err != nil {
+		return nil, err
+	}
+	targetVersion := max(currentVersion - steps, 0)
+	// Convert target version to string for Migrate.
+	return g.Migrate(ctx, strconv.Itoa(targetVersion))
+}
+
 // ValidateMigrations verifies that applied migrations have not changed by comparing MD5 checksums.
 func (g *Gostgrator) ValidateMigrations(ctx context.Context, databaseVersion int) error {
 	_, err := g.GetMigrations()
@@ -138,7 +139,7 @@ func (g *Gostgrator) ValidateMigrations(ctx context.Context, databaseVersion int
 	for _, m := range g.migrations {
 		if m.Action == "do" && m.Version > 0 && m.Version <= databaseVersion {
 			query := g.client.GetMd5Sql(m)
-			rows, err := g.client.RunQuery(ctx, query)
+			rows, err := g.client.QueryContext(ctx, query)
 			if err != nil {
 				return err
 			}
@@ -166,11 +167,11 @@ func (g *Gostgrator) RunMigrations(ctx context.Context, migrations []Migration) 
 		if err != nil {
 			return applied, err
 		}
-		if err := g.client.RunSqlScript(ctx, sqlScript); err != nil {
+		if _, err := g.client.ExecContext(ctx, sqlScript); err != nil {
 			return applied, err
 		}
 		persistSQL := g.client.PersistActionSql(m)
-		if err := g.client.RunSqlScript(ctx, persistSQL); err != nil {
+		if _, err := g.client.ExecContext(ctx, persistSQL); err != nil {
 			return applied, err
 		}
 		applied = append(applied, m)

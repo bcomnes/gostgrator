@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/bcomnes/gostgrator/pkg/gostgrator"
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -21,7 +21,7 @@ var pgTestConfig gostgrator.Config
 func TestMain(m *testing.M) {
 	// Connect to default "postgres" database.
 	connStr := "host=localhost port=5432 user=postgres dbname=postgres sslmode=disable"
-	db, err := sql.Open("postgres", connStr)
+	db, err := sql.Open("pgx", connStr)
 	if err != nil {
 		log.Fatalf("failed to connect to postgres: %v", err)
 	}
@@ -41,19 +41,31 @@ func TestMain(m *testing.M) {
 	// Wait briefly to ensure the test database is ready.
 	time.Sleep(1 * time.Second)
 
+	// Connect to the newly created test database.
+	testConnStr := "host=localhost port=5432 user=postgres dbname=gostgrator_test sslmode=disable"
+	testDB, err := sql.Open("pgx", testConnStr)
+	if err != nil {
+		log.Fatalf("failed to connect to test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create schema in the new test database.
+	if _, err := testDB.Exec(`CREATE SCHEMA IF NOT EXISTS gostgrator_schema`); err != nil {
+		log.Fatalf("failed to create schema: %v", err)
+	}
+
 	// Set up global Postgres config.
 	pgTestConfig = gostgrator.Config{
-		Driver:           "pg",
-		Database:         "gostgrator_test",
-		MigrationPattern: "testdata/migrations/*",
-		SchemaTable:      "schemaversion",
+		Driver:            "pg",
+		MigrationPattern:  "testdata/migrations/*",
+		SchemaTable:       "schemaversion",
 		ValidateChecksums: true,
 	}
 
 	code := m.Run()
 
 	// Cleanup: reconnect and drop the test database.
-	db2, err := sql.Open("postgres", connStr)
+	db2, err := sql.Open("pgx", connStr)
 	if err != nil {
 		log.Fatalf("failed to reconnect for cleanup: %v", err)
 	}
@@ -75,12 +87,15 @@ func TestMain(m *testing.M) {
 func TestPostgresMigrations(t *testing.T) {
 	ctx := context.Background()
 	// Open a connection to the test database.
-	connStr := "host=localhost port=5432 user=postgres dbname=gostgrator_test sslmode=disable"
-	db, err := sql.Open("postgres", connStr)
+	connStr := "host=localhost port=5432 user=postgres dbname=gostgrator_test sslmode=disable search_path=gostgrator_schema"
+	db, err := sql.Open("pgx", connStr)
 	if err != nil {
 		t.Fatalf("failed to connect to test database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		_, _ = db.ExecContext(ctx, "DROP TABLE IF EXISTS schemaversion")
+		_ = db.Close()
+	}()
 
 	// Create a new Gostgrator instance.
 	g, err := gostgrator.NewGostgrator(pgTestConfig, db)
@@ -148,58 +163,106 @@ func TestPostgresMigrations(t *testing.T) {
 		}
 	})
 
+	t.Run("Run Max Version", func(t *testing.T) {
+		_, err := g.Migrate(ctx, "max")
+		if err != nil {
+			t.Fatalf("Migrate to 004 failed: %v", err)
+		}
+		ver, err := g.GetDatabaseVersion(ctx)
+		if err != nil {
+			t.Fatalf("GetDatabaseVersion failed: %v", err)
+		}
+		if ver != 6 {
+			t.Fatalf("expected database version 6, got %d", ver)
+		}
+	})
+
 	t.Run("Migrate Down to 000", func(t *testing.T) {
 		migs, err := g.Migrate(ctx, "000")
 		if err != nil {
 			t.Fatalf("Migrate down to 000 failed: %v", err)
 		}
 		// Assuming 4 migrations run on downgrade.
-		if len(migs) != 4 {
-			t.Fatalf("expected 4 migrations for down, got %d", len(migs))
+		if len(migs) != 6 {
+			t.Fatalf("expected 6 migrations for down, got %d", len(migs))
 		}
 	})
+}
 
+func TestMigrationFail(t *testing.T) {
+	t.Run("Migration Failure Handling", func(t *testing.T) {
+		ctx := context.Background()
+
+		connStr := "host=localhost port=5432 user=postgres dbname=gostgrator_test sslmode=disable search_path=gostgrator_schema"
+		db, err := sql.Open("pgx", connStr)
+		if err != nil {
+			t.Fatalf("failed to connect to test database: %v", err)
+		}
+
+		defer func() {
+			_, _ = db.ExecContext(ctx, "DROP TABLE IF EXISTS schemaversion")
+			_ = db.Close()
+		}()
+
+		failCfg := pgTestConfig
+		failCfg.MigrationPattern = "testdata/failMigrations/*"
+
+		fail, err := gostgrator.NewGostgrator(failCfg, db)
+		if err != nil {
+			t.Fatalf("failed to create gostgrator for failure test: %v", err)
+		}
+
+		_, err = fail.Migrate(ctx, "max")
+		if err == nil {
+			t.Fatal("expected migration failure error, got none")
+		}
+
+		rows, err := db.QueryContext(ctx, "SELECT name FROM widgets")
+		if err != nil {
+			t.Fatalf("failed to query widgets: %v", err)
+		}
+		defer rows.Close()
+
+		hasRows := rows.Next()
+		if hasRows {
+			t.Fatal("expected no rows in widgets table after failed migration")
+		}
+
+		t.Run("Migrate Down to 000", func(t *testing.T) {
+			migs, err := fail.Migrate(ctx, "000")
+			if err != nil {
+				t.Fatalf("Migrate down to 000 failed: %v", err)
+			}
+			// Assuming 4 migrations run on downgrade.
+			if len(migs) != 1 {
+				t.Fatalf("expected 1 migrations for down, got %d", len(migs))
+			}
+		})
+	})
+}
+
+func TestMigrationDupe(t *testing.T) {
 	t.Run("Duplicate Migrations Error", func(t *testing.T) {
+		ctx := context.Background()
+
+		connStr := "host=localhost port=5432 user=postgres dbname=gostgrator_test sslmode=disable search_path=gostgrator_schema"
 		dupCfg := pgTestConfig
 		dupCfg.MigrationPattern = "testdata/duplicateMigrations/*"
-		dupDB, err := sql.Open("postgres", connStr)
+		dupDB, err := sql.Open("pgx", connStr)
 		if err != nil {
 			t.Fatalf("failed to connect for duplicate test: %v", err)
 		}
-		defer dupDB.Close()
+		defer func() {
+			_, _ = dupDB.ExecContext(ctx, "DROP TABLE IF EXISTS schemaversion")
+			_ = dupDB.Close()
+		}()
 		dup, err := gostgrator.NewGostgrator(dupCfg, dupDB)
 		if err != nil {
 			t.Fatalf("failed to create gostgrator for duplicate test: %v", err)
 		}
-		defer func() {
-			_, _ = dup.RunQuery(ctx, "DROP TABLE IF EXISTS schemaversion")
-			dupDB.Close()
-		}()
 		_, err = dup.Migrate(ctx, "")
 		if err == nil {
 			t.Fatal("expected duplicate migration error, but got none")
-		}
-	})
-
-	t.Run("Migration Failure Handling", func(t *testing.T) {
-		failCfg := pgTestConfig
-		failCfg.MigrationPattern = "testdata/failMigrations/*"
-		failDB, err := sql.Open("postgres", connStr)
-		if err != nil {
-			t.Fatalf("failed to connect for failure test: %v", err)
-		}
-		defer failDB.Close()
-		fail, err := gostgrator.NewGostgrator(failCfg, failDB)
-		if err != nil {
-			t.Fatalf("failed to create gostgrator for failure test: %v", err)
-		}
-		defer func() {
-			_, _ = fail.RunQuery(ctx, "DROP TABLE IF EXISTS schemaversion")
-			failDB.Close()
-		}()
-		_, err = fail.Migrate(ctx, "")
-		if err == nil {
-			t.Fatal("expected migration failure error, got none")
 		}
 	})
 }
@@ -207,9 +270,7 @@ func TestPostgresMigrations(t *testing.T) {
 func TestSqliteMigrations(t *testing.T) {
 	ctx := context.Background()
 	// Open an in-memory SQLite database.
-	dbFile := "testdata/tmp_test.db"
-_ = os.Remove(dbFile) // Ensure clean slate
-db, err := sql.Open("sqlite3", dbFile)
+	db, err := sql.Open("sqlite3", "file::memory:?cache=shared")
 	if err != nil {
 		t.Fatalf("failed to open sqlite3 in-memory db: %v", err)
 	}
@@ -217,7 +278,6 @@ db, err := sql.Open("sqlite3", dbFile)
 
 	cfg := gostgrator.Config{
 		Driver:           "sqlite3",
-		Database:         ":memory:",
 		MigrationPattern: "testdata/migrations/*",
 		SchemaTable:      "versions",
 		ValidateChecksums: true,
@@ -228,7 +288,7 @@ db, err := sql.Open("sqlite3", dbFile)
 		t.Fatalf("failed to create sqlite gostgrator: %v", err)
 	}
 	defer func() {
-		_, _ = g.RunQuery(ctx, "DROP TABLE IF EXISTS versions")
+		_, _ = g.QueryContext(ctx, "DROP TABLE IF EXISTS versions")
 		db.Close()
 	}()
 

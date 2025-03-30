@@ -1,6 +1,6 @@
 // Package main implements a SQLite-specific CLI for gostgrator.
-// It accepts a connection URL (for SQLite the connection URL is usually a file path)
-// along with options for migrations.
+// It accepts a connection URL via the -conn flag or SQLITE_URL environment variable
+// (typically a file path like "./db.sqlite") along with options for migrations.
 package main
 
 import (
@@ -17,7 +17,7 @@ import (
 	"github.com/bcomnes/gostgrator/pkg/gostgrator"
 )
 
-const version = "1.0.0"
+var versionString = gostgrator.Version + " (" + gostgrator.GitCommit + ")"
 
 func usage() {
 	helpText := `
@@ -27,11 +27,14 @@ Usage:
 Commands:
   migrate       Migrate the schema to a target version.
                 Optionally specify a target version (number or "max", default "max").
+  down          Roll back N migrations (using the -down flag).
+  new           Create a new empty migration pair with the given description.
   drop-schema   Drop the schema version table.
 
 Options:
   -conn string
         SQLite connection URL (typically the filename, e.g., "./db.sqlite")
+        If omitted, SQLITE_URL environment variable will be used.
   -config string
         Path to JSON configuration file (optional)
   -migration-pattern string
@@ -40,6 +43,12 @@ Options:
         Name of the schema table (default "schemaversion")
   -to string
         Target version to migrate to (default "max")
+  -down int
+        Roll back N migrations (down)
+  -desc string
+        Description for new migration (for new command)
+  -mode string
+        Migration numbering mode ("int" or "timestamp") for new migration (default "int")
   -help
         Show help message.
   -version
@@ -55,6 +64,9 @@ func main() {
 	migrationPattern := flag.String("migration-pattern", "migrations/*.sql", "Glob pattern for migration files")
 	schemaTable := flag.String("schema-table", "schemaversion", "Name of the schema table")
 	target := flag.String("to", "max", "Target version to migrate to")
+	downSteps := flag.Int("down", 0, "Roll back N migrations (down)")
+	newDesc := flag.String("desc", "", "Description for new migration (for new command)")
+	mode := flag.String("mode", "int", "Migration numbering mode (\"int\" or \"timestamp\")")
 	helpFlag := flag.Bool("help", false, "Show help message")
 	versionFlag := flag.Bool("version", false, "Show version")
 
@@ -66,14 +78,18 @@ func main() {
 		os.Exit(0)
 	}
 	if *versionFlag {
-		fmt.Println("gostgrator-sqlite version:", version)
+		fmt.Println("gostgrator-sqlite version:", versionString)
 		os.Exit(0)
 	}
 
+	// Load connection string from environment if not provided.
 	if *connStr == "" {
-		fmt.Fprintln(os.Stderr, "Error: connection URL (-conn) is required")
-		usage()
-		os.Exit(1)
+		*connStr = os.Getenv("SQLITE_URL")
+		if *connStr == "" {
+			fmt.Fprintln(os.Stderr, "Error: connection URL must be provided via -conn or SQLITE_URL environment variable")
+			usage()
+			os.Exit(1)
+		}
 	}
 
 	// Create a default configuration.
@@ -113,7 +129,11 @@ func main() {
 	// Determine command.
 	args := flag.Args()
 	command := "migrate"
-	if len(args) > 0 {
+	if *downSteps > 0 {
+		command = "down"
+	} else if *newDesc != "" {
+		command = "new"
+	} else if len(args) > 0 {
 		if args[0] == "drop-schema" {
 			command = "drop-schema"
 		} else if args[0] != "migrate" {
@@ -136,6 +156,29 @@ func main() {
 		for _, m := range applied {
 			fmt.Printf("  - Version %d: %s (%s)\n", m.Version, m.Name, m.Filename)
 		}
+	case "down":
+		fmt.Printf("[%s] Rolling back %d migration(s)...\n", time.Now().Format(time.Kitchen), *downSteps)
+		applied, err := g.Down(ctx, *downSteps)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Rollback error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("[%s] Rolled back %d migration(s):\n", time.Now().Format(time.Kitchen), len(applied))
+		for _, m := range applied {
+			fmt.Printf("  - Rolled back version %d: %s (%s)\n", m.Version, m.Name, m.Filename)
+		}
+	case "new":
+		if *newDesc == "" {
+			fmt.Fprintln(os.Stderr, "Error: a description must be provided for new migration using -desc flag")
+			usage()
+			os.Exit(1)
+		}
+		fmt.Printf("[%s] Creating new migration with description '%s' in %s mode...\n", time.Now().Format(time.Kitchen), *newDesc, *mode)
+		if err := g.CreateMigration(*newDesc, *mode); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating new migration: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("[%s] New migration created successfully.\n", time.Now().Format(time.Kitchen))
 	case "drop-schema":
 		fmt.Printf("[%s] Dropping schema table...\n", time.Now().Format(time.Kitchen))
 		if err := dropSchema(ctx, cliConfig, g); err != nil {
@@ -164,6 +207,6 @@ func loadConfig(path string, cfg *gostgrator.Config) error {
 func dropSchema(ctx context.Context, cfg gostgrator.Config, g *gostgrator.Gostgrator) error {
 	// For SQLite we use the schema table as is.
 	query := fmt.Sprintf("DROP TABLE %s", cfg.SchemaTable)
-	_, err := g.RunQuery(ctx, query)
+	_, err := g.QueryContext(ctx, query)
 	return err
 }
