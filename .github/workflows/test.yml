@@ -6,6 +6,29 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
 
+    # Environment variables for all steps in this job
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/go_todo?sslmode=disable
+      PORT: 8080
+
+    # Create PostgreSQL service container
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          #POSTGRES_PASSWORD: ""
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_USER: postgres
+          # POSTGRES_DB: go_todo
+        ports:
+          - 5432:5432
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     strategy:
       matrix:
         os: [ubuntu-latest]
@@ -17,4 +40,7 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
         check-latest: true
+
+
+    # Run your tests
     - run: make all
