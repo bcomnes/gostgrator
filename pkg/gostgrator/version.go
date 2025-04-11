@@ -1,6 +1,6 @@
 package gostgrator
 
 var (
-	Version   = "a5a3a1c-dirty"
-	GitCommit = "a5a3a1c2096bcb9da73214386b7aa852a717e16b"
+	Version   = "9874c49"
+	GitCommit = "9874c493e922e8f06fc8549e7fc27d896545b882"
 )
