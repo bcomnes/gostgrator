@@ -1,5 +1,5 @@
-github.com/bcomnes/goversion v1.0.1 h1:NLUyxMNvf62gvLt7AJ0KvGrTyCHdjtXwXekli2mCilQ=
-github.com/bcomnes/goversion v1.0.1/go.mod h1:Az3Rval35IhAKNfn9iXt2+cT7jgd3RAQwGcLFYWTyYc=
+github.com/bcomnes/goversion/v2 v2.0.2 h1:riezkvN1F0Ojd9h4tbKbCljUOLaAawrcTooumGyd6fc=
+github.com/bcomnes/goversion/v2 v2.0.2/go.mod h1:6mfZEpUms2u2mYzshiwklK+N9AtdHti2EQIm5ATj1J8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
