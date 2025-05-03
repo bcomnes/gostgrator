@@ -394,14 +394,16 @@ func TestSchemaTableFlagOverridesConfig(t *testing.T) {
 	json.NewEncoder(cf).Encode(cfg)
 	cf.Close()
 
-	// Run migrate with overriding flag.
-	_, err := helperRun([]string{
+	// Run migrate with overriding flag. Clear DATABASE_URL so the config’s
+	// connection string wins even if CI provides its own.
+	out, err := helperRun([]string{
 		"-config", cfgPath,
 		"-schema-table", flagTable,
+		"-migration-pattern", testMigrationsPath, // ensure migrations are found in CI
 		"migrate", "max",
-	})
+	}, "DATABASE_URL=")
 	if err != nil {
-		t.Fatalf("CLI migrate for schema override failed: %v", err)
+		t.Fatalf("CLI migrate for schema override failed: %v; output: %s", err, out)
 	}
 
 	// Connect to DB directly to verify which schemaversion table exists.
