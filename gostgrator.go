@@ -1,4 +1,3 @@
-// Package gostgrator provides database migration capabilities.
 package gostgrator
 
 import (
@@ -12,18 +11,17 @@ import (
 // Config holds settings for migrations.
 type Config struct {
 	// Driver is the database driver, e.g., "pg" or "sqlite3".
-	Driver string
+	Driver string `json:"driver,omitempty"`
 	// SchemaTable is the name of the migration table.
-	SchemaTable string
-
+	SchemaTable string `json:"schemaTable,omitempty"`
 	// MigrationPattern is the glob pattern for migration files (e.g. "./migrations/*.sql").
-	MigrationPattern string
-
+	MigrationPattern string `json:"migrationPattern,omitempty"`
 	// Newline is the desired newline style ("LF", "CR", or "CRLF").
-	Newline string
-
+	Newline string `json:"newline,omitempty"`
 	// ValidateChecksums indicates if the tool should validate migration checksums.
-	ValidateChecksums bool
+	ValidateChecksums bool `json:"validateChecksums,omitempty"`
+	// The connection strig to use
+	Conn string `json:"conn,omitempty"`
 }
 
 // DefaultConfig provides default values for configuration.

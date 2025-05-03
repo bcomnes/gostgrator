@@ -9,6 +9,10 @@ import (
 	"testing"
 )
 
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+
 // TestMain triggers our helper process mode. When the environment
 // variable GO_HELPER_PROCESS is set, main() is called (simulating our CLI).
 func TestMain(m *testing.M) {
@@ -28,6 +32,34 @@ func runCLI(args []string, extraEnv ...string) (string, error) {
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
+
+// makeTempConfig creates a throw‑away JSON config file containing a
+// connection string and returns its path and a cleanup func.
+func makeTempConfig(conn string) (string, func(), error) {
+	cfg := map[string]any{
+		"conn":              conn,
+		"MigrationPattern":  "migrations/*.sql",
+		"SchemaTable":       "schemaversion",
+		"Driver":            "pg",
+		"ValidateChecksums": true,
+	}
+	f, err := os.CreateTemp("", "cli_config_*.json")
+	if err != nil {
+		return "", nil, err
+	}
+	if err := json.NewEncoder(f).Encode(cfg); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return "", nil, err
+	}
+	f.Close()
+	cleanup := func() { os.Remove(f.Name()) }
+	return f.Name(), cleanup, nil
+}
+
+// -----------------------------------------------------------------------------
+// Core behaviour tests (existing)
+// -----------------------------------------------------------------------------
 
 // TestCLIHelp checks that -help prints the usage info.
 func TestCLIHelp(t *testing.T) {
@@ -163,5 +195,78 @@ func TestFlagOrderingSafe(t *testing.T) {
 	expected := "Error: Flags must be specified before the command. Please reorder your arguments."
 	if !strings.Contains(out, expected) {
 		t.Errorf("expected flag ordering error message, got:\n%s", out)
+	}
+}
+
+// -----------------------------------------------------------------------------
+// New precedence & connection‑string tests
+// -----------------------------------------------------------------------------
+
+// TestConnPrecedence_FlagWins checks that -conn overrides both env and config file.
+func TestConnPrecedence_FlagWins(t *testing.T) {
+	cfgPath, cleanup, err := makeTempConfig("postgres://config-host/db")
+	if err != nil {
+		t.Fatalf("temp config: %v", err)
+	}
+	defer cleanup()
+
+	out, _ := runCLI(
+		[]string{
+			"-conn", "postgres://flag-host/db",
+			"-config", cfgPath,
+			"migrate", "max",
+		},
+		"DATABASE_URL=postgres://env-host/db",
+	)
+	if !strings.Contains(out, "flag-host") {
+		t.Errorf("expected connection to use flag-host; got:\n%s", out)
+	}
+}
+
+// TestConnPrecedence_EnvWins checks that DATABASE_URL overrides config when no flag is present.
+func TestConnPrecedence_EnvWins(t *testing.T) {
+	cfgPath, cleanup, err := makeTempConfig("postgres://config-host/db")
+	if err != nil {
+		t.Fatalf("temp config: %v", err)
+	}
+	defer cleanup()
+
+	out, _ := runCLI(
+		[]string{
+			"-config", cfgPath,
+			"migrate", "max",
+		},
+		"DATABASE_URL=postgres://env-host/db",
+	)
+	if !strings.Contains(out, "env-host") {
+		t.Errorf("expected connection to use env-host; got:\n%s", out)
+	}
+}
+
+// TestConnPrecedence_ConfigUsed checks that config file is used when flag and env are empty.
+func TestConnPrecedence_ConfigUsed(t *testing.T) {
+	cfgPath, cleanup, err := makeTempConfig("postgres://config-host/db")
+	if err != nil {
+		t.Fatalf("temp config: %v", err)
+	}
+	defer cleanup()
+
+	out, _ := runCLI(
+		[]string{
+			"-config", cfgPath,
+			"migrate", "max",
+		},
+		"DATABASE_URL=",
+	)
+	if !strings.Contains(out, "config-host") {
+		t.Errorf("expected connection to use config-host; got:\n%s", out)
+	}
+}
+
+// TestConnPrecedence_MissingEverywhere ensures error when no connection info is supplied.
+func TestConnPrecedence_MissingEverywhere(t *testing.T) {
+	out, _ := runCLI([]string{"migrate", "max"}, "DATABASE_URL=")
+	if !strings.Contains(out, "connection URL must be provided") {
+		t.Errorf("expected missing connection error; got:\n%s", out)
 	}
 }

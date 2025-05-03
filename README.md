@@ -46,6 +46,8 @@ Each supported database has it's own CLI you can install.
 
 ### gostgrator/pg
 
+The `gostgrator/pg` cli provides migration support for [Postgres](https://www.postgresql.org).
+
 ```console
 go get -tool github.com/bcomnes/gostgrator/pg
 go tool github.com/bcomnes/gostgrator/pg -help
@@ -81,6 +83,31 @@ Options:
 ```console
 go get -tool github.com/bcomnes/gostgrator/sqlite
 go tool github.com/bcomnes/gostgrator/sqlite -help
+Usage:
+  gostgrator-sqlite [command] [arguments] [options]
+
+Commands:
+  migrate [target]    Migrate the schema to a target version (default: "max").
+  down [steps]        Roll back the specified number of migrations (default: 1).
+  new <desc>          Create a new empty migration pair with the provided description.
+  drop-schema         Drop the schema version table.
+  list                List available migrations and annotate the migration matching the database version.
+
+Options:
+  -config string
+    	Path to JSON configuration file (optional)
+  -conn string
+    	SQLite connection URL (typically a file path, e.g., "./db.sqlite"). Can also be set via SQLITE_URL env var.
+  -help
+    	Show help message
+  -migration-pattern string
+    	Glob pattern for migration files (default "migrations/*.sql")
+  -mode string
+    	Migration numbering mode ("int" or "timestamp") for new command (default "int")
+  -schema-table string
+    	Name of the schema table (default "schemaversion")
+  -version
+    	Show version
 ```
 
 ## Quick tour

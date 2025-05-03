@@ -1,6 +1,8 @@
 // Package main implements a SQLite-specific CLI for gostgrator.
-// It accepts a connection URL via the -conn flag or SQLITE_URL environment variable
-// (typically a file path like "./db.sqlite") along with options for migrations.
+// It accepts a connection URL via the -conn flag, SQLITE_URL environment
+// variable, or the "conn" field in a JSON config file. (A SQLite URL is
+// usually a file path like "./db.sqlite".) Additional options control
+// migrations.
 package main
 
 import (
@@ -41,10 +43,10 @@ Options:`
 
 func main() {
 	// Define global flags.
-	connStr := flag.String("conn", "", "SQLite connection URL (typically a file path, e.g., \"./db.sqlite\"). Can also be set via SQLITE_URL env var.")
+	connStr := flag.String("conn", "", "SQLite connection URL (file path). Overrides SQLITE_URL and the \"conn\" field in -config.")
 	configPath := flag.String("config", "", "Path to JSON configuration file (optional)")
-	migrationPattern := flag.String("migration-pattern", "migrations/*.sql", "Glob pattern for migration files")
-	schemaTable := flag.String("schema-table", "schemaversion", "Name of the schema table")
+	migrationPattern := flag.String("migration-pattern", "", "Glob pattern for migration files (default \"migrations/*.sql\")")
+	schemaTable := flag.String("schema-table", "", "Name of the schema table (default \"schemaversion\")")
 	mode := flag.String("mode", "int", "Migration numbering mode (\"int\" or \"timestamp\") for new command")
 	helpFlag := flag.Bool("help", false, "Show help message")
 	versionFlag := flag.Bool("version", false, "Show version")
@@ -71,18 +73,38 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Load configuration from file if provided.
-	cliConfig := gostgrator.Config{
-		Driver:           "sqlite3",
-		SchemaTable:      *schemaTable,
-		MigrationPattern: *migrationPattern,
-	}
+	// ------------------------------------------------------------------
+	// Configuration precedence:
+	//   1. Flags supplied by the user
+	//   2. Values from the JSON config file
+	//   3. Built‑in defaults
+	// ------------------------------------------------------------------
+
+	cliConfig := gostgrator.Config{Driver: "sqlite3"}
+
+	// 2. Load JSON config if provided.
 	if *configPath != "" {
 		if err := loadConfig(*configPath, &cliConfig); err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading config file: %v\n", err)
 			os.Exit(1)
 		}
 	}
+
+	// 3. Fill defaults.
+	if cliConfig.SchemaTable == "" {
+		cliConfig.SchemaTable = "schemaversion"
+	}
+	if cliConfig.MigrationPattern == "" {
+		cliConfig.MigrationPattern = "migrations/*.sql"
+	}
+
+	// 1. Let explicitly‑passed flags win (empty means the user didn't set it).
+    if *schemaTable != "" {
+        cliConfig.SchemaTable = *schemaTable
+    }
+    if *migrationPattern != "" {
+        cliConfig.MigrationPattern = *migrationPattern
+    }
 
 	// Process positional arguments.
 	args := flag.Args()
@@ -190,12 +212,16 @@ func main() {
 	}
 }
 
-func withDB(cliConfig gostgrator.Config, connStr string, f func(g *gostgrator.Gostgrator, ctx context.Context)) {
+func withDB(cliConfig gostgrator.Config, flagConn string, f func(g *gostgrator.Gostgrator, ctx context.Context)) {
+	// Precedence: flag > env > config file
+	connStr := firstNonEmpty(
+		flagConn,
+		os.Getenv("SQLITE_URL"),
+		cliConfig.Conn,
+	)
+
 	if connStr == "" {
-		connStr = os.Getenv("SQLITE_URL")
-	}
-	if connStr == "" {
-		fmt.Fprintln(os.Stderr, "Error: connection URL must be provided via -conn flag or SQLITE_URL environment variable")
+		fmt.Fprintln(os.Stderr, "Error: connection URL must be provided via -conn flag, SQLITE_URL env var, or \"conn\" in config file")
 		usage()
 		os.Exit(1)
 	}
@@ -232,4 +258,14 @@ func dropSchema(ctx context.Context, cfg gostgrator.Config, g *gostgrator.Gostgr
 	query := fmt.Sprintf("DROP TABLE %s", cfg.SchemaTable)
 	_, err := g.QueryContext(ctx, query)
 	return err
+}
+
+// firstNonEmpty returns the first non-empty string in vals.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }

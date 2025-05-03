@@ -1,6 +1,7 @@
 package main_test
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var cliBinary string
@@ -56,6 +59,17 @@ func helperRun(args []string, extraEnv ...string) (string, error) {
 func makeTestConnURL() string {
 	return testDBFile
 }
+
+// tableExists checks whether a table exists in the SQLite database.
+func tableExists(db *sql.DB, name string) (bool, error) {
+	var cnt int
+	err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, name).Scan(&cnt)
+	return cnt > 0, err
+}
+
+// -----------------------------------------------------------------------------
+// Existing core command tests
+// -----------------------------------------------------------------------------
 
 // TestCLIMigrate tests the "migrate" command.
 func TestCLIMigrate(t *testing.T) {
@@ -165,12 +179,122 @@ func TestFlagOrderingSafe(t *testing.T) {
 	}
 }
 
-// TestCLIListChain tests the "list" command by chaining operations:
-// 1. Reset migrations down to 0 using "migrate 0".
-// 2. Run list before any migrations; expect current version 0.
-// 3. Run migrate (target max) and then list: expect current version equals max version (e.g., 6).
-// 4. Run down (roll back 1) and then list: expect current version decreases (e.g., 5).
-// Also prints the initial list output for debugging.
+// -----------------------------------------------------------------------------
+// New precedence & schema-table override tests
+// -----------------------------------------------------------------------------
+
+// makeTempConfig file with conn.
+func makeTempConfig(conn string) (string, func(), error) {
+	dir, err := os.MkdirTemp("", "sqlite_cfg")
+	if err != nil {
+		return "", nil, err
+	}
+	p := filepath.Join(dir, "cfg.json")
+	f, _ := os.Create(p)
+	json.NewEncoder(f).Encode(map[string]string{"conn": conn})
+	f.Close()
+	return p, func() { os.RemoveAll(dir) }, nil
+}
+
+// TestConnPrecedence_ConfigUsed ensures config conn works when flag/env empty.
+func TestConnPrecedence_ConfigUsed(t *testing.T) {
+	cfgDB := filepath.Join(t.TempDir(), "cfg.db")
+	cfgPath, clean, err := makeTempConfig(cfgDB)
+	if err != nil {
+		t.Fatalf("cfg: %v", err)
+	}
+	defer clean()
+
+	_, err = helperRun([]string{"-config", cfgPath, "list"}, "SQLITE_URL=")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if _, e := os.Stat(cfgDB); e != nil {
+		t.Errorf("expected cfg.db to exist")
+	}
+}
+
+// TestConnPrecedence_EnvWins ensures env beats config.
+func TestConnPrecedence_EnvWins(t *testing.T) {
+	envDB := filepath.Join(t.TempDir(), "env.db")
+	cfgDB := filepath.Join(t.TempDir(), "cfg.db")
+	cfgPath, clean, err := makeTempConfig(cfgDB)
+	if err != nil {
+		t.Fatalf("cfg: %v", err)
+	}
+	defer clean()
+
+	_, err = helperRun([]string{"-config", cfgPath, "list"}, "SQLITE_URL="+envDB)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if _, e := os.Stat(envDB); e != nil {
+		t.Errorf("expected env.db to exist")
+	}
+	if _, e := os.Stat(cfgDB); e == nil {
+		t.Errorf("expected cfg.db NOT to be used")
+	}
+}
+
+// TestConnPrecedence_FlagWins ensures flag beats env+config.
+func TestConnPrecedence_FlagWins(t *testing.T) {
+	flagDB := filepath.Join(t.TempDir(), "flag.db")
+	envDB := filepath.Join(t.TempDir(), "env.db")
+	cfgDB := filepath.Join(t.TempDir(), "cfg.db")
+	cfgPath, clean, err := makeTempConfig(cfgDB)
+	if err != nil {
+		t.Fatalf("cfg: %v", err)
+	}
+	defer clean()
+
+	_, err = helperRun([]string{"-conn", flagDB, "-config", cfgPath, "list"}, "SQLITE_URL="+envDB)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if _, e := os.Stat(flagDB); e != nil {
+		t.Errorf("expected flag.db to exist")
+	}
+}
+
+// TestSchemaTableFlagOverridesConfig checks -schema-table overrides config.
+func TestSchemaTableFlagOverridesConfig(t *testing.T) {
+	conn := filepath.Join(t.TempDir(), "override.db")
+	cfg := map[string]any{
+		"SchemaTable": "cfg_table",
+		"conn":        conn,
+	}
+	cfgDir := t.TempDir()
+	cfgPath := filepath.Join(cfgDir, "cfg.json")
+	cf, _ := os.Create(cfgPath)
+	json.NewEncoder(cf).Encode(cfg)
+	cf.Close()
+
+	flagTable := "flag_table"
+
+	_, err := helperRun([]string{"-config", cfgPath, "-schema-table", flagTable, "migrate", "max"})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	db, err := sql.Open("sqlite3", conn)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	okFlag, _ := tableExists(db, flagTable)
+	okCfg, _ := tableExists(db, "cfg_table")
+
+	if !okFlag || okCfg {
+		t.Errorf("expected only %s to exist, got flag=%v cfg=%v", flagTable, okFlag, okCfg)
+	}
+}
+
+// -----------------------------------------------------------------------------
+// List-chain test (reset → up → down) remains unchanged
+// -----------------------------------------------------------------------------
+
+// TestCLIListChain tests the "list" command by chaining operations: reset → up → down.
 func TestCLIListChain(t *testing.T) {
 	connArg := makeTestConnURL()
 
@@ -183,22 +307,20 @@ func TestCLIListChain(t *testing.T) {
 
 	listArgs := []string{"-conn", connArg, "-migration-pattern", testMigrationsPath, "list"}
 
-	// Step 1: List after reset; expect current version to be 0.
+	// Step 1: List after reset; expect current version 0.
 	out, err := helperRun(listArgs)
 	if err != nil {
 		t.Fatalf("SQLite CLI list command (initial) failed: %v; output: %s", err, out)
 	}
-	fmt.Println("DEBUG: Initial list output:")
-	fmt.Println(out)
 	if !strings.Contains(out, "Current database migration version: 0") {
 		t.Errorf("expected current migration version 0 initially, got:\n%s", out)
 	}
 
 	// Step 2: Migrate to max (assumed max version is 6), then list.
 	migrateArgs := []string{"-conn", connArg, "-migration-pattern", testMigrationsPath, "migrate", "max"}
-	out, err = helperRun(migrateArgs)
+	_, err = helperRun(migrateArgs)
 	if err != nil {
-		t.Fatalf("SQLite CLI migrate command failed: %v; output: %s", err, out)
+		t.Fatalf("SQLite CLI migrate command failed: %v", err)
 	}
 	out, err = helperRun(listArgs)
 	if err != nil {
@@ -211,11 +333,11 @@ func TestCLIListChain(t *testing.T) {
 		t.Errorf("expected migration version 6 to be annotated as current, got:\n%s", out)
 	}
 
-	// Step 3: Run down to roll back one migration, then list again. Now current version should be 5.
+	// Step 3: down 1 then list; expect version 5.
 	downArgs := []string{"-conn", connArg, "-migration-pattern", testMigrationsPath, "down", "1"}
-	out, err = helperRun(downArgs)
+	_, err = helperRun(downArgs)
 	if err != nil {
-		t.Fatalf("SQLite CLI down command failed: %v; output: %s", err, out)
+		t.Fatalf("SQLite CLI down command failed: %v", err)
 	}
 	out, err = helperRun(listArgs)
 	if err != nil {

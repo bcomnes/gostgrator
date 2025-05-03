@@ -1,5 +1,6 @@
 // Package main implements a PostgreSQL-specific CLI for gostgrator.
-// It accepts a connection URL via the -conn flag or DATABASE_URL environment variable
+// It accepts a connection URL via the -conn flag, DATABASE_URL environment variable,
+// or the "conn" field in the JSON config file
 // (e.g., "postgres://user:pass@host:port/dbname?sslmode=require")
 // along with options for migrations.
 package main
@@ -42,10 +43,10 @@ Options:`
 
 func main() {
 	// Define global flags.
-	connStr := flag.String("conn", "", "PostgreSQL connection URL. Can be set with DATABASE_URL env var.")
+	connStr := flag.String("conn", "", "PostgreSQL connection URL. Overrides DATABASE_URL and config file.")
 	configPath := flag.String("config", "", "Path to JSON configuration file (optional)")
-	migrationPattern := flag.String("migration-pattern", "migrations/*.sql", "Glob pattern for migration files when running up or down migrations")
-	schemaTable := flag.String("schema-table", "schemaversion", "Name of the schema table migration state is stored in")
+	migrationPattern := flag.String("migration-pattern", "", "Glob pattern for migration files when running up or down migrations (default: \"migrations/*.sql\")")
+	schemaTable := flag.String("schema-table", "", "Name of the schema table migration state is stored in (default: \"schemaversion\")")
 	mode := flag.String("mode", "int", "Migration numbering mode (\"int\" or \"timestamp\") when creating new migrations")
 	helpFlag := flag.Bool("help", false, "Show help message")
 	versionFlag := flag.Bool("version", false, "Show version")
@@ -72,17 +73,37 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Load configuration from file if provided.
-	cliConfig := gostgrator.Config{
-		Driver:           "pg",
-		SchemaTable:      *schemaTable,
-		MigrationPattern: *migrationPattern,
-	}
+	// ------------------------------------------------------------------
+	// Configuration precedence:
+	//   1. Flags supplied by the user
+	//   2. Values from the JSON config file
+	//   3. Built‑in defaults
+	// ------------------------------------------------------------------
+
+	cliConfig := gostgrator.Config{Driver: "pg"}
+
+	// 2. Load JSON config if provided.
 	if *configPath != "" {
 		if err := loadConfig(*configPath, &cliConfig); err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading config file: %v\n", err)
 			os.Exit(1)
 		}
+	}
+
+	// 3. Fill any still‑missing values with built‑ins.
+	if cliConfig.SchemaTable == "" {
+		cliConfig.SchemaTable = "schemaversion"
+	}
+	if cliConfig.MigrationPattern == "" {
+		cliConfig.MigrationPattern = "migrations/*.sql"
+	}
+
+	// 1. Finally, let explicitly‑passed flags win.
+	if *schemaTable != "" {
+		cliConfig.SchemaTable = *schemaTable
+	}
+	if *migrationPattern != "" {
+		cliConfig.MigrationPattern = *migrationPattern
 	}
 
 	// Process positional arguments.
@@ -202,12 +223,16 @@ func main() {
 
 // withDB is a helper that sets up the database connection and the gostgrator instance,
 // then calls the provided function with the initialized gostgrator and context.
-func withDB(cliConfig gostgrator.Config, connStr string, f func(g *gostgrator.Gostgrator, ctx context.Context)) {
+func withDB(cliConfig gostgrator.Config, flagConn string, f func(g *gostgrator.Gostgrator, ctx context.Context)) {
+	// Precedence: flag > env > config file
+	connStr := firstNonEmpty(
+		flagConn,
+		os.Getenv("DATABASE_URL"),
+		cliConfig.Conn,
+	)
+
 	if connStr == "" {
-		connStr = os.Getenv("DATABASE_URL")
-	}
-	if connStr == "" {
-		fmt.Fprintln(os.Stderr, "Error: connection URL must be provided via -conn flag or DATABASE_URL environment variable")
+		fmt.Fprintln(os.Stderr, "Error: connection URL must be provided via -conn flag, DATABASE_URL env var, or \"conn\" in config file")
 		usage()
 		os.Exit(1)
 	}
@@ -253,4 +278,14 @@ func dropSchema(ctx context.Context, cfg gostgrator.Config, g *gostgrator.Gostgr
 	query := fmt.Sprintf("DROP TABLE %s", table)
 	_, err := g.QueryContext(ctx, query)
 	return err
+}
+
+// firstNonEmpty returns the first non-empty string in the provided list.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }

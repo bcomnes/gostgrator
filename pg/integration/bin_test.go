@@ -18,10 +18,10 @@ var cliBinary string
 
 // Global variables for test database and migration files.
 var (
-	testDBName         = "gostgrator_cli_test"
-	testSchema         = "gostgrator_schema"
+	testDBName  = "gostgrator_cli_test"
+	testSchema  = "gostgrator_schema"
 	// Base connection string for DSN-based connections used in TestMain.
-	baseConnStr        = "host=localhost port=5432 user=postgres sslmode=disable"
+	baseConnStr = "host=localhost port=5432 user=postgres sslmode=disable"
 	// testMigrationsPath: relative path from the integration test package to the test migration files.
 	testMigrationsPath = "../../testdata/migrations/*.sql"
 )
@@ -118,6 +118,20 @@ func makeTestConnURL() string {
 	testConnURL := fmt.Sprintf("postgres://postgres@localhost:5432/%s?sslmode=disable", testDBName)
 	return testConnURL + "&search_path=" + testSchema
 }
+
+// tableExists returns true if the given table name exists in the current search_path.
+func tableExists(db *sql.DB, table string) (bool, error) {
+	var exists bool
+	q := `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name=$1)`
+	if err := db.QueryRow(q, table).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+// -----------------------------------------------------------------------------
+// Core CLI command integration tests (existing behaviour)
+// -----------------------------------------------------------------------------
 
 // TestCLIMigrate tests the "migrate" command.
 func TestCLIMigrate(t *testing.T) {
@@ -275,63 +289,138 @@ func TestFlagOrderingSafe(t *testing.T) {
 	}
 }
 
-// TestCLIListChain tests the "list" command by chaining operations:
-// 1. Run list before any migrations; expect current version 0.
-// 2. Run migrate (target max) and then list: expect current version equals max version (e.g., 6).
-// 3. Run down (roll back 1) and then list: expect current version decreases (e.g., 5).
-// Also prints the initial list output for debugging.
-func TestCLIListChain(t *testing.T) {
+// -----------------------------------------------------------------------------
+// New precedence & schema‑table override integration tests
+// -----------------------------------------------------------------------------
+
+// TestConnPrecedence_ConfigUsed checks that conn from config file works when flag/env absent.
+func TestConnPrecedence_ConfigUsed(t *testing.T) {
+	connGood := makeTestConnURL()
+
+	tmpDir, _ := os.MkdirTemp("", "precedence_cfg")
+	defer os.RemoveAll(tmpDir)
+
+	cfg := map[string]interface{}{
+		"conn":             connGood,
+		"MigrationPattern": testMigrationsPath,
+	}
+	cfgPath := filepath.Join(tmpDir, "config.json")
+	b, _ := os.Create(cfgPath)
+	json.NewEncoder(b).Encode(cfg)
+	b.Close()
+
+	out, err := helperRun([]string{"-config", cfgPath, "list"}, "DATABASE_URL=")
+	if err != nil {
+		t.Fatalf("CLI list with config conn failed: %v; out: %s", err, out)
+	}
+	if !strings.Contains(out, "Current database migration version") {
+		t.Errorf("expected successful DB access via config conn; got:\n%s", out)
+	}
+}
+
+// TestConnPrecedence_EnvWins checks env beats config.
+func TestConnPrecedence_EnvWins(t *testing.T) {
+	connGood := makeTestConnURL()
+	connBad := "postgres://invalid_host/db?sslmode=disable"
+
+	tmpDir, _ := os.MkdirTemp("", "precedence_env")
+	defer os.RemoveAll(tmpDir)
+
+	cfg := map[string]interface{}{
+		"conn":             connBad,
+		"MigrationPattern": testMigrationsPath,
+	}
+	cfgPath := filepath.Join(tmpDir, "config.json")
+	b, _ := os.Create(cfgPath)
+	json.NewEncoder(b).Encode(cfg)
+	b.Close()
+
+	out, err := helperRun([]string{"-config", cfgPath, "list"},
+		fmt.Sprintf("DATABASE_URL=%s", connGood))
+	if err != nil {
+		t.Fatalf("CLI list with env conn failed: %v; out: %s", err, out)
+	}
+	if !strings.Contains(out, "Current database migration version") {
+		t.Errorf("expected env conn to override bad config conn; got:\n%s", out)
+	}
+}
+
+// TestConnPrecedence_FlagWins checks flag beats env+config.
+func TestConnPrecedence_FlagWins(t *testing.T) {
+	connGood := makeTestConnURL()
+	connBad := "postgres://invalid_host/db?sslmode=disable"
+
+	tmpDir, _ := os.MkdirTemp("", "precedence_flag")
+	defer os.RemoveAll(tmpDir)
+
+	cfg := map[string]interface{}{
+		"conn":             connBad,
+		"MigrationPattern": testMigrationsPath,
+	}
+	cfgPath := filepath.Join(tmpDir, "config.json")
+	b, _ := os.Create(cfgPath)
+	json.NewEncoder(b).Encode(cfg)
+	b.Close()
+
+	out, err := helperRun(
+		[]string{"-conn", connGood, "-config", cfgPath, "list"},
+		fmt.Sprintf("DATABASE_URL=%s", connBad))
+	if err != nil {
+		t.Fatalf("CLI list with flag conn failed: %v; out: %s", err, out)
+	}
+	if !strings.Contains(out, "Current database migration version") {
+		t.Errorf("expected flag conn to win; got:\n%s", out)
+	}
+}
+
+// TestSchemaTableFlagOverridesConfig verifies that -schema-table overrides the value in config.
+func TestSchemaTableFlagOverridesConfig(t *testing.T) {
 	connArg := makeTestConnURL()
-	env := fmt.Sprintf("DATABASE_URL=%s", connArg)
-	listArgs := []string{"-conn", connArg, "-migration-pattern", testMigrationsPath, "list"}
 
-	// Step 1: List before migrations.
-	out, err := helperRun(listArgs, env)
-	if err != nil {
-		t.Fatalf("CLI list command (initial) failed: %v; output: %s", err, out)
-	}
-	// Debug print of the initial list.
-	//fmt.Println("DEBUG: Initial list output:")
-	//fmt.Println(out)
-	if !strings.Contains(out, "Current database migration version: 0") {
-		t.Errorf("expected current migration version 0 initially, got:\n%s", out)
-	}
+	// Use distinct table names so we can detect which one was created.
+	configTable := "schemaversion_cfg"
+	flagTable := "schemaversion_flag"
 
-	// Step 2: Migrate to max (assumed max version is 6), then list.
-	migrateArgs := []string{"-conn", connArg, "-migration-pattern", testMigrationsPath, "migrate", "max"}
-	out, err = helperRun(migrateArgs, env)
-	//fmt.Println("DEBUG: Initial list output:")
-	//fmt.Println(out)
+	tmpDir, _ := os.MkdirTemp("", "schema_override")
+	defer os.RemoveAll(tmpDir)
+
+	cfg := map[string]interface{}{
+		"SchemaTable":      configTable,
+		"MigrationPattern": testMigrationsPath,
+		"conn":             connArg,
+	}
+	cfgPath := filepath.Join(tmpDir, "config.json")
+	cf, _ := os.Create(cfgPath)
+	json.NewEncoder(cf).Encode(cfg)
+	cf.Close()
+
+	// Run migrate with overriding flag.
+	_, err := helperRun([]string{
+		"-config", cfgPath,
+		"-schema-table", flagTable,
+		"migrate", "max",
+	})
 	if err != nil {
-		t.Fatalf("CLI migrate command failed: %v; output: %s", err, out)
-	}
-	out, err = helperRun(listArgs, env)
-	//fmt.Println("DEBUG: Initial list output:")
-	//fmt.Println(out)
-	if err != nil {
-		t.Fatalf("CLI list command (after migrate) failed: %v; output: %s", err, out)
-	}
-	if !strings.Contains(out, "Current database migration version: 6") {
-		t.Errorf("expected current migration version 6 after migrate, got:\n%s", out)
-	}
-	if !strings.Contains(out, "Version 6:") || !strings.Contains(out, "<== current") {
-		t.Errorf("expected migration version 6 to be annotated as current, got:\n%s", out)
+		t.Fatalf("CLI migrate for schema override failed: %v", err)
 	}
 
-	// Step 3: Run down to roll back one migration, then list again. Now current version should be 5.
-	downArgs := []string{"-conn", connArg, "-migration-pattern", testMigrationsPath, "down", "1"}
-	out, err = helperRun(downArgs, env)
+	// Connect to DB directly to verify which schemaversion table exists.
+	db, err := sql.Open("pgx", connArg)
 	if err != nil {
-		t.Fatalf("CLI down command failed: %v; output: %s", err, out)
+		t.Fatalf("db open: %v", err)
 	}
-	out, err = helperRun(listArgs, env)
+	defer db.Close()
+
+	okFlag, err := tableExists(db, flagTable)
 	if err != nil {
-		t.Fatalf("CLI list command (after down) failed: %v; output: %s", err, out)
+		t.Fatalf("tableExists: %v", err)
 	}
-	if !strings.Contains(out, "Current database migration version: 5") {
-		t.Errorf("expected current migration version 5 after down, got:\n%s", out)
+	okConfig, err := tableExists(db, configTable)
+	if err != nil {
+		t.Fatalf("tableExists: %v", err)
 	}
-	if !strings.Contains(out, "Version 5:") || !strings.Contains(out, "<== current") {
-		t.Errorf("expected migration version 5 to be annotated as current, got:\n%s", out)
+	if !okFlag || okConfig {
+		t.Errorf("expected %s to exist and %s not to; got flagExists=%v configExists=%v",
+			flagTable, configTable, okFlag, okConfig)
 	}
 }

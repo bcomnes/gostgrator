@@ -1,4 +1,3 @@
-// Package gostgrator provides database migration capabilities.
 package gostgrator
 
 import (
