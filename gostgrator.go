@@ -62,7 +62,7 @@ func NewGostgrator(cfg Config, db *sql.DB) (*Gostgrator, error) {
 }
 
 func (g *Gostgrator) GetMigrations() ([]Migration, error) {
-    migs, err := GetMigrations(g.cfg)
+    migs, err := getMigrations(g.cfg)
     if err != nil {
         return nil, err
     }
@@ -163,7 +163,7 @@ func (g *Gostgrator) ValidateMigrations(ctx context.Context, databaseVersion int
 func (g *Gostgrator) RunMigrations(ctx context.Context, migrations []Migration) ([]Migration, error) {
 	var applied []Migration
 	for _, m := range migrations {
-		sqlScript, err := m.GetSQL()
+		sqlScript, err := m.getSQL()
 		if err != nil {
 			return applied, err
 		}

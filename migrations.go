@@ -1,4 +1,3 @@
-// Package gostgrator provides database migration capabilities.
 package gostgrator
 
 import (
@@ -31,8 +30,8 @@ type Migration struct {
 	Md5 string
 }
 
-// GetSQL reads the migration file's content.
-func (m *Migration) GetSQL() (string, error) {
+// getSQL reads the migration file's content.
+func (m *Migration) getSQL() (string, error) {
 	data, err := os.ReadFile(m.Filename)
 	if err != nil {
 		return "", err
@@ -93,8 +92,8 @@ func fileChecksum(filename, lineEnding string) (string, error) {
 	return checksum(string(data), lineEnding)
 }
 
-// GetMigrations scans for migration files matching the pattern and loads them.
-func GetMigrations(cfg Config) ([]Migration, error) {
+// getMigrations scans for migration files matching the pattern and loads them.
+func getMigrations(cfg Config) ([]Migration, error) {
 	files, err := filepath.Glob(cfg.MigrationPattern)
 	if err != nil {
 		return nil, err

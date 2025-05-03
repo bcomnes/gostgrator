@@ -1,4 +1,3 @@
-// pkg/gostgrator/migrations_test.go
 package gostgrator
 
 import (

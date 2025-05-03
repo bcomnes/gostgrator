@@ -1,5 +1,4 @@
-// cli_integration_test.go
-package integration
+package main_test
 
 import (
 	"database/sql"
@@ -24,7 +23,7 @@ var (
 	// Base connection string for DSN-based connections used in TestMain.
 	baseConnStr        = "host=localhost port=5432 user=postgres sslmode=disable"
 	// testMigrationsPath: relative path from the integration test package to the test migration files.
-	testMigrationsPath = "../../../pkg/gostgrator/testdata/migrations/*.sql"
+	testMigrationsPath = "../../testdata/migrations/*.sql"
 )
 
 // TestMain sets up the test database (using DSN style) and builds the CLI binary before running tests,

@@ -1,5 +1,4 @@
-// cli_integration_test.go
-package integration
+package main_test
 
 import (
 	"encoding/json"
@@ -18,7 +17,7 @@ var (
 	// We use a temporary file for the SQLite DB.
 	testDBFile = filepath.Join(os.TempDir(), "gostgrator_sqlite_test.db")
 	// testMigrationsPath: relative path from the integration test package to the test migration files.
-	testMigrationsPath = "../../../pkg/gostgrator/testdata/migrations/*.sql"
+	testMigrationsPath = "../../testdata/migrations/*.sql"
 )
 
 // TestMain builds the CLI binary and sets up the SQLite test database.

@@ -1,7 +1,5 @@
 .PHONY: all build dev deps generate help print-version test vet
 
-VERSION := $(shell git describe --tags --always --dirty)
-COMMIT  := $(shell git rev-parse HEAD)
 CHECK_FILES ?= $$(go list ./... | grep -v /vendor/)
 
 help: ## Show this help.
@@ -10,10 +8,7 @@ help: ## Show this help.
 all: deps generate build test ## Run all steps
 
 build: ## Build all
-	go build -ldflags "-X 'github.com/bcomnes/gostgrator.Version=$(VERSION)' -X 'github.com/bcomnes/gostgrator.GitCommit=$(COMMIT)'" ./...
-
-dev: ## Run the development server
-	go run -ldflags "-X 'github.com/bcomnes/gostgrator.Version=$(VERSION)' -X 'github.com/bcomnes/gostgrator.GitCommit=$(COMMIT)'" ./cmd/server/main.go
+	go build ./...
 
 deps: ## Download dependencies.
 	go mod tidy
@@ -26,7 +21,3 @@ test: ## Run tests
 
 vet: ## Run vet
 	go vet ./...
-
-print-version: ## Print version info
-	@echo "Version: $(VERSION)"
-	@echo "Commit:  $(COMMIT)"
