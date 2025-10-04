@@ -5,7 +5,7 @@ go 1.24.1
 tool github.com/bcomnes/goversion/v2
 
 require (
-	github.com/jackc/pgx/v5 v5.7.5
+	github.com/jackc/pgx/v5 v5.7.6
 	github.com/mattn/go-sqlite3 v1.14.32
 )
 
