@@ -12,6 +12,19 @@
 
 **gostgrator**: A low dependency, go stdlib port of [postgrator](https://github.com/rickbergfalk/postgrator) supporting postgres and sqlite.
 
+## Install with Homebrew
+
+Install both database-specific commands from the [`bcomnes/tap`](https://github.com/bcomnes/homebrew-tap) tap:
+
+```console
+brew install bcomnes/tap/gostgrator
+gostgrator-pg -help
+gostgrator-sqlite -help
+```
+
+This adds the tap automatically.
+Update both commands later with `brew upgrade gostgrator`.
+
 ## Migrations
 
 Migrations can live in any folder in your project. The default is `./migrations`.
