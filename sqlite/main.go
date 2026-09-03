@@ -17,9 +17,8 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3" // SQLite driver
-
 	"github.com/bcomnes/gostgrator"
+	_ "modernc.org/sqlite" // SQLite driver
 )
 
 var versionString = gostgrator.Version
@@ -80,7 +79,7 @@ func main() {
 	//   3. Built‑in defaults
 	// ------------------------------------------------------------------
 
-	cliConfig := gostgrator.Config{Driver: "sqlite3"}
+	cliConfig := gostgrator.Config{Driver: "sqlite"}
 
 	// 2. Load JSON config if provided.
 	if *configPath != "" {
@@ -99,12 +98,12 @@ func main() {
 	}
 
 	// 1. Let explicitly‑passed flags win (empty means the user didn't set it).
-    if *schemaTable != "" {
-        cliConfig.SchemaTable = *schemaTable
-    }
-    if *migrationPattern != "" {
-        cliConfig.MigrationPattern = *migrationPattern
-    }
+	if *schemaTable != "" {
+		cliConfig.SchemaTable = *schemaTable
+	}
+	if *migrationPattern != "" {
+		cliConfig.MigrationPattern = *migrationPattern
+	}
 
 	// Process positional arguments.
 	args := flag.Args()
@@ -226,7 +225,7 @@ func withDB(cliConfig gostgrator.Config, flagConn string, f func(g *gostgrator.G
 		os.Exit(1)
 	}
 
-	db, err := sql.Open("sqlite3", connStr)
+	db, err := sql.Open("sqlite", connStr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 		os.Exit(1)

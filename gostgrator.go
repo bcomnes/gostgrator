@@ -10,7 +10,7 @@ import (
 
 // Config holds settings for migrations.
 type Config struct {
-	// Driver is the database driver, e.g., "pg" or "sqlite3".
+	// Driver selects the SQL dialect: "pg", "sqlite", or the legacy alias "sqlite3".
 	Driver string `json:"driver,omitempty"`
 	// SchemaTable is the name of the migration table.
 	SchemaTable string `json:"schemaTable,omitempty"`
@@ -60,12 +60,12 @@ func NewGostgrator(cfg Config, db *sql.DB) (*Gostgrator, error) {
 }
 
 func (g *Gostgrator) GetMigrations() ([]Migration, error) {
-    migs, err := getMigrations(g.cfg)
-    if err != nil {
-        return nil, err
-    }
-    g.migrations = migs
-    return migs, nil
+	migs, err := getMigrations(g.cfg)
+	if err != nil {
+		return nil, err
+	}
+	g.migrations = migs
+	return migs, nil
 }
 
 // QueryContext is a helper to execute a query using the underlying client.
@@ -123,7 +123,7 @@ func (g *Gostgrator) Down(ctx context.Context, steps int) ([]Migration, error) {
 	if err != nil {
 		return nil, err
 	}
-	targetVersion := max(currentVersion - steps, 0)
+	targetVersion := max(currentVersion-steps, 0)
 	// Convert target version to string for Migrate.
 	return g.Migrate(ctx, strconv.Itoa(targetVersion))
 }

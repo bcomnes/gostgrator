@@ -19,7 +19,7 @@
 //	    "context"
 //	    "database/sql"
 //
-//	    _ "github.com/jackc/pgx/v5/stdlib" // or sqlite3
+//	    _ "github.com/jackc/pgx/v5/stdlib" // or modernc.org/sqlite
 //	    "github.com/bcomnes/gostgrator"
 //	)
 //
@@ -38,7 +38,7 @@
 //
 // Use Config to tweak behaviour:
 //
-//   - Driver            — database driver name ("pg", "sqlite3")
+//   - Driver            — SQL dialect ("pg" or "sqlite"; "sqlite3" remains an alias)
 //   - SchemaTable       — table that stores migration state (default "schemaversion")
 //   - MigrationPattern  — glob for locating migration files
 //   - Newline           — line-ending style when scaffolding new migrations
