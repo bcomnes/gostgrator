@@ -13,10 +13,19 @@ func NewClient(cfg Config, db *sql.DB) (Client, error) {
 	switch strings.ToLower(cfg.Driver) {
 	case "pg":
 		return NewPostgresClient(cfg, db), nil
-	case "sqlite3":
+	case "sqlite", "sqlite3":
 		return NewSqlite3Client(cfg, db), nil
 	default:
-		return nil, fmt.Errorf("db driver '%s' not supported. Must be one of: sqlite3 or pg", cfg.Driver)
+		return nil, fmt.Errorf("db driver '%s' not supported. Must be one of: sqlite, sqlite3, or pg", cfg.Driver)
+	}
+}
+
+func isSQLiteDriver(driver string) bool {
+	switch strings.ToLower(driver) {
+	case "sqlite", "sqlite3":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -37,9 +46,9 @@ type baseClient struct {
 	db  *sql.DB
 
 	// Function pointers for driver-specific SQL generators.
-	getColumnsSqlFn func() string
-	getAddNameSqlFn func() string
-	getAddMd5SqlFn  func() string
+	getColumnsSqlFn  func() string
+	getAddNameSqlFn  func() string
+	getAddMd5SqlFn   func() string
 	getAddRunAtSqlFn func() string
 }
 
@@ -137,7 +146,7 @@ func (c *baseClient) EnsureTable(ctx context.Context) error {
 	var sqls []string
 	if len(columns) == 0 {
 		colType := "BIGINT"
-		if strings.ToLower(c.cfg.Driver) == "sqlite3" {
+		if isSQLiteDriver(c.cfg.Driver) {
 			colType = "INTEGER"
 		} else if strings.ToLower(c.cfg.Driver) == "pg" {
 			parts := strings.Split(c.cfg.SchemaTable, ".")

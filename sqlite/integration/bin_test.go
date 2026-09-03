@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 var cliBinary string
@@ -130,9 +130,9 @@ func TestCLINew(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	cfg := map[string]interface{}{
-		"MigrationPattern": filepath.Join(tmpDir, "*.sql"),
-		"Driver":           "sqlite3",
-		"SchemaTable":      "schemaversion",
+		"MigrationPattern":  filepath.Join(tmpDir, "*.sql"),
+		"Driver":            "sqlite",
+		"SchemaTable":       "schemaversion",
 		"ValidateChecksums": true,
 	}
 	cfgPath := filepath.Join(tmpDir, "config.json")
@@ -276,7 +276,7 @@ func TestSchemaTableFlagOverridesConfig(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 
-	db, err := sql.Open("sqlite3", conn)
+	db, err := sql.Open("sqlite", conn)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -296,19 +296,19 @@ func TestSchemaTableFlagOverridesConfig(t *testing.T) {
 
 // TestCLIListChain tests the "list" command by chaining operations: reset → up → down.
 func TestCLIListChain(t *testing.T) {
-	connArg := makeTestConnURL()
+	connArg := filepath.Join(t.TempDir(), "list-chain.db")
 
 	// Reset: migrate down to 0 to clear any previous state.
 	resetArgs := []string{"-conn", connArg, "-migration-pattern", testMigrationsPath, "migrate", "0"}
-	_, err := helperRun(resetArgs)
+	out, err := helperRun(resetArgs)
 	if err != nil {
-		t.Fatalf("SQLite CLI reset (migrate 0) failed: %v", err)
+		t.Fatalf("SQLite CLI reset (migrate 0) failed: %v; output: %s", err, out)
 	}
 
 	listArgs := []string{"-conn", connArg, "-migration-pattern", testMigrationsPath, "list"}
 
 	// Step 1: List after reset; expect current version 0.
-	out, err := helperRun(listArgs)
+	out, err = helperRun(listArgs)
 	if err != nil {
 		t.Fatalf("SQLite CLI list command (initial) failed: %v; output: %s", err, out)
 	}
@@ -318,9 +318,9 @@ func TestCLIListChain(t *testing.T) {
 
 	// Step 2: Migrate to max (assumed max version is 6), then list.
 	migrateArgs := []string{"-conn", connArg, "-migration-pattern", testMigrationsPath, "migrate", "max"}
-	_, err = helperRun(migrateArgs)
+	out, err = helperRun(migrateArgs)
 	if err != nil {
-		t.Fatalf("SQLite CLI migrate command failed: %v", err)
+		t.Fatalf("SQLite CLI migrate command failed: %v; output: %s", err, out)
 	}
 	out, err = helperRun(listArgs)
 	if err != nil {
@@ -335,9 +335,9 @@ func TestCLIListChain(t *testing.T) {
 
 	// Step 3: down 1 then list; expect version 5.
 	downArgs := []string{"-conn", connArg, "-migration-pattern", testMigrationsPath, "down", "1"}
-	_, err = helperRun(downArgs)
+	out, err = helperRun(downArgs)
 	if err != nil {
-		t.Fatalf("SQLite CLI down command failed: %v", err)
+		t.Fatalf("SQLite CLI down command failed: %v; output: %s", err, out)
 	}
 	out, err = helperRun(listArgs)
 	if err != nil {

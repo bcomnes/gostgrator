@@ -12,7 +12,7 @@ import (
 
 	"github.com/bcomnes/gostgrator"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 var pgTestConfig gostgrator.Config
@@ -127,7 +127,7 @@ func TestPostgresMigrations(t *testing.T) {
 		}
 	})
 
-	t.Run("Get Migrations", func (t *testing.T) {
+	t.Run("Get Migrations", func(t *testing.T) {
 		migs, err := g.GetMigrations()
 		if err != nil {
 			t.Fatalf("GetMigrations failed: %v", err)
@@ -137,16 +137,16 @@ func TestPostgresMigrations(t *testing.T) {
 		}
 		mig := migs[0]
 
-		if (mig.Version != 1) {
+		if mig.Version != 1 {
 			t.Fatalf("expected migration version 1, got %d", mig.Version)
 		}
 
-		if (mig.Action != "do") {
+		if mig.Action != "do" {
 			t.Fatalf("expected migration action 'up', got %s", mig.Action)
 		}
 
 		// filanem endswith
-		if (strings.HasSuffix(mig.Filename, "001_do.sql")) {
+		if strings.HasSuffix(mig.Filename, "001_do.sql") {
 			t.Fatalf("expected migration filename '001_do.sql', got %s", mig.Filename)
 		}
 
@@ -270,16 +270,16 @@ func TestMigrationDupe(t *testing.T) {
 func TestSqliteMigrations(t *testing.T) {
 	ctx := context.Background()
 	// Open an in-memory SQLite database.
-	db, err := sql.Open("sqlite3", "file::memory:?cache=shared")
+	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
 	if err != nil {
-		t.Fatalf("failed to open sqlite3 in-memory db: %v", err)
+		t.Fatalf("failed to open sqlite in-memory db: %v", err)
 	}
 	defer db.Close()
 
 	cfg := gostgrator.Config{
-		Driver:           "sqlite3",
-		MigrationPattern: "testdata/migrations/*",
-		SchemaTable:      "versions",
+		Driver:            "sqlite",
+		MigrationPattern:  "testdata/migrations/*",
+		SchemaTable:       "versions",
 		ValidateChecksums: true,
 	}
 

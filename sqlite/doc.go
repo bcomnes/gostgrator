@@ -62,7 +62,7 @@
 //
 //	{
 //	  "conn":             "./data/dev.sqlite",
-//	  "driver":           "sqlite3",
+//	  "driver":           "sqlite",
 //	  "schemaTable":      "schema_version",
 //	  "migrationPattern": "sql/*.sql"
 //	}
