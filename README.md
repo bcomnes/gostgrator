@@ -1,3 +1,5 @@
+![gostgrator: SQL migrations for Go.](assets/gostgrator-opengraph-migratory-goversion-style-v3.webp)
+
 # gostgrator
 [![Actions Status][action-img]][action-url]
 [![SocketDev][socket-image]][socket-url]
@@ -157,3 +159,7 @@ Full API docs live on [PkgGoDev][pkg-go-dev-url].
 ## License
 
 MIT © Bret Comnes 2025
+
+## Mascot
+
+![gostgrator migratory gopher](assets/gostgrator-gopher-migratory-1.webp)
