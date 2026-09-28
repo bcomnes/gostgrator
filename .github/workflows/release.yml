@@ -66,4 +66,3 @@ jobs:
           github-token: ${{ github.token }}
           proxy: https://proxy.golang.org
           seed-proxy: true
-          pre-publish: make all
