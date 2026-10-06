@@ -106,7 +106,7 @@ func TestClientInjectionConstructor(t *testing.T) {
 				Driver: driver, Conn: "not a database connection", SchemaTable: "misleading_versions",
 				Migrations: FSMigrations{FS: sourceFixtureFS(t), Pattern: "*.sql"}, Newline: "LF",
 			}
-			g, err := NewGostgratorWithClient(cfg, client)
+			g, err := NewGostgrator(cfg, client)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -136,10 +136,11 @@ func TestClientInjectionConstructor(t *testing.T) {
 
 func TestClientInjectionRejectsNil(t *testing.T) {
 	var sqlite *Sqlite3Client
+	var postgres *PostgresClient
 	var custom *injectionClient
-	for name, client := range map[string]Client{"nil": nil, "typed nil built-in": sqlite, "typed nil custom": custom} {
+	for name, client := range map[string]Client{"nil": nil, "typed nil sqlite": sqlite, "typed nil postgres": postgres, "typed nil custom": custom} {
 		t.Run(name, func(t *testing.T) {
-			g, err := NewGostgratorWithClient(Config{Migrations: DiskMigrations{Pattern: "testdata/source_sqlite/*.sql"}}, client)
+			g, err := NewGostgrator(Config{Migrations: DiskMigrations{Pattern: "testdata/source_sqlite/*.sql"}}, client)
 			if err == nil || g != nil {
 				t.Fatalf("constructor = %v, %v; want nil and error", g, err)
 			}
@@ -148,21 +149,22 @@ func TestClientInjectionRejectsNil(t *testing.T) {
 }
 
 func TestClientInjectionRejectsLegacyPattern(t *testing.T) {
-	client, db := injectionSQLite(t)
+	client, _ := injectionSQLite(t)
 	cfg := Config{Driver: "sqlite", MigrationPattern: "testdata/source_sqlite/*.sql"}
-	g, err := NewGostgratorWithClient(cfg, client)
-	if g != nil || err == nil || !strings.Contains(err.Error(), "use Config.Migrations") {
-		t.Fatalf("constructor = %v, %v; want error directing callers to Config.Migrations", g, err)
+	for name, supplied := range map[string]Client{"real": client.Client, "wrapped": client} {
+		t.Run(name, func(t *testing.T) {
+			g, err := NewGostgrator(cfg, supplied)
+			if g != nil || err == nil || !strings.Contains(err.Error(), "use Config.Migrations") {
+				t.Fatalf("constructor = %v, %v; want error directing callers to Config.Migrations", g, err)
+			}
+		})
 	}
 	if len(client.calls) != 0 {
 		t.Fatalf("constructor performed database work: %v", client.calls)
 	}
-	if _, err := NewGostgrator(cfg, db); err != nil {
-		t.Fatalf("existing constructor must retain legacy support: %v", err)
-	}
 }
 
-func TestClientInjectionConfigParity(t *testing.T) {
+func TestClientInjectionSourceValidation(t *testing.T) {
 	files := sourceFixtureFS(t)
 	var disk *DiskMigrations
 	var virtual *FSMigrations
@@ -197,28 +199,31 @@ func TestClientInjectionConfigParity(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			client, db := injectionSQLite(t)
-			cfg := tc.cfg
-			cfg.Driver = "sqlite"
-			builtIn, builtInErr := NewGostgrator(cfg, db)
-			injected, injectedErr := NewGostgratorWithClient(cfg, client)
-			if tc.invalid {
-				if builtInErr == nil || injectedErr == nil || builtIn != nil || injected != nil {
-					t.Fatalf("invalid source: built-in = %v, %v; injected = %v, %v", builtIn, builtInErr, injected, injectedErr)
-				}
-				if builtInErr.Error() != injectedErr.Error() {
-					t.Fatalf("source validation differs: %v versus %v", builtInErr, injectedErr)
-				}
-				return
+			wrapped, _ := injectionSQLite(t)
+			for kind, client := range map[string]Client{"real": wrapped.Client, "wrapped": wrapped} {
+				t.Run(kind, func(t *testing.T) {
+					g, err := NewGostgrator(tc.cfg, client)
+					if tc.invalid {
+						if err == nil || g != nil {
+							t.Fatalf("invalid source: constructor = %v, %v", g, err)
+						}
+						return
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					if g.client != client {
+						t.Fatal("constructor replaced supplied client")
+					}
+					want := tc.cfg
+					want.ValidateChecksums = DefaultConfig.ValidateChecksums
+					if !reflect.DeepEqual(g.cfg, want) {
+						t.Fatalf("normalized config = %+v, want %+v (checksum defaults only)", g.cfg, want)
+					}
+				})
 			}
-			if builtInErr != nil || injectedErr != nil {
-				t.Fatalf("valid source: built-in error = %v; injected error = %v", builtInErr, injectedErr)
-			}
-			if !reflect.DeepEqual(builtIn.cfg, injected.cfg) {
-				t.Fatalf("normalized configs differ: %+v versus %+v", builtIn.cfg, injected.cfg)
-			}
-			if injected.cfg.SchemaTable == "" || injected.cfg.ValidateChecksums != DefaultConfig.ValidateChecksums {
-				t.Fatalf("missing defaults: %+v", injected.cfg)
+			if len(wrapped.calls) != 0 {
+				t.Fatalf("constructor performed database work: %v", wrapped.calls)
 			}
 		})
 	}
@@ -226,7 +231,7 @@ func TestClientInjectionConfigParity(t *testing.T) {
 
 func TestClientInjectionBuiltInSchemaDefault(t *testing.T) {
 	_, db := injectionSQLite(t)
-	g, err := NewGostgrator(Config{Driver: "sqlite", MigrationPattern: "testdata/source_sqlite/*.sql"}, db)
+	g, err := NewGostgrator(Config{Migrations: DiskMigrations{Pattern: "testdata/source_sqlite/*.sql"}}, NewSqlite3Client(Config{}, db))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +260,7 @@ func TestClientInjectionMigrations(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			client, db := injectionSQLite(t)
 			cfg.Driver, cfg.Conn, cfg.SchemaTable = "unsupported", "invalid connection", "misleading_versions"
-			g, err := NewGostgratorWithClient(cfg, client)
+			g, err := NewGostgrator(cfg, client)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -338,7 +343,7 @@ func TestClientInjectionMigrations(t *testing.T) {
 func TestClientInjectionChecksumDrift(t *testing.T) {
 	files := fstest.MapFS{"001.do.sql": {Data: []byte("CREATE TABLE injected_drift (id INTEGER);\r\n")}}
 	client, db := injectionSQLite(t)
-	g, err := NewGostgratorWithClient(Config{Migrations: FSMigrations{FS: files, Pattern: "*.sql"}, Newline: "LF", SchemaTable: "misleading_versions"}, client)
+	g, err := NewGostgrator(Config{Migrations: FSMigrations{FS: files, Pattern: "*.sql"}, Newline: "LF", SchemaTable: "misleading_versions"}, client)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +377,7 @@ func TestClientInjectionErrors(t *testing.T) {
 	for _, failure := range []string{"ensure", "has table", "query", "checksum query", "execute", "bookkeeping"} {
 		t.Run(failure, func(t *testing.T) {
 			client, _ := injectionSQLite(t)
-			g, err := NewGostgratorWithClient(Config{Migrations: FSMigrations{FS: sourceFixtureFS(t), Pattern: "*.sql"}}, client)
+			g, err := NewGostgrator(Config{Migrations: FSMigrations{FS: sourceFixtureFS(t), Pattern: "*.sql"}}, client)
 			if err != nil {
 				t.Fatal(err)
 			}

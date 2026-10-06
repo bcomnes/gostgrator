@@ -100,8 +100,7 @@ func TestMigrationSourceValidation(t *testing.T) {
 			if _, err := getMigrations(cfg); err == nil {
 				t.Fatal("getMigrations accepted invalid source")
 			}
-			cfg.Driver = "sqlite"
-			if _, err := NewGostgrator(cfg, nil); err == nil {
+			if _, err := NewGostgrator(cfg, NewSqlite3Client(Config{}, nil)); err == nil {
 				t.Fatal("NewGostgrator accepted invalid source")
 			}
 		})

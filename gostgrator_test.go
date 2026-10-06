@@ -57,7 +57,7 @@ func TestMain(m *testing.M) {
 	// Set up global Postgres config.
 	pgTestConfig = gostgrator.Config{
 		Driver:            "pg",
-		MigrationPattern:  "testdata/migrations/*",
+		Migrations:        gostgrator.DiskMigrations{Pattern: "testdata/migrations/*"},
 		SchemaTable:       "schemaversion",
 		ValidateChecksums: true,
 	}
@@ -98,7 +98,7 @@ func TestPostgresMigrations(t *testing.T) {
 	}()
 
 	// Create a new Gostgrator instance.
-	g, err := gostgrator.NewGostgrator(pgTestConfig, db)
+	g, err := gostgrator.NewGostgrator(pgTestConfig, gostgrator.NewPostgresClient(pgTestConfig, db))
 	if err != nil {
 		t.Fatalf("failed to create gostgrator: %v", err)
 	}
@@ -205,9 +205,9 @@ func TestMigrationFail(t *testing.T) {
 		}()
 
 		failCfg := pgTestConfig
-		failCfg.MigrationPattern = "testdata/failMigrations/*"
+		failCfg.Migrations = gostgrator.DiskMigrations{Pattern: "testdata/failMigrations/*"}
 
-		fail, err := gostgrator.NewGostgrator(failCfg, db)
+		fail, err := gostgrator.NewGostgrator(failCfg, gostgrator.NewPostgresClient(failCfg, db))
 		if err != nil {
 			t.Fatalf("failed to create gostgrator for failure test: %v", err)
 		}
@@ -247,7 +247,7 @@ func TestMigrationDupe(t *testing.T) {
 
 		connStr := "host=localhost port=5432 user=postgres dbname=gostgrator_test sslmode=disable search_path=gostgrator_schema"
 		dupCfg := pgTestConfig
-		dupCfg.MigrationPattern = "testdata/duplicateMigrations/*"
+		dupCfg.Migrations = gostgrator.DiskMigrations{Pattern: "testdata/duplicateMigrations/*"}
 		dupDB, err := sql.Open("pgx", connStr)
 		if err != nil {
 			t.Fatalf("failed to connect for duplicate test: %v", err)
@@ -256,7 +256,7 @@ func TestMigrationDupe(t *testing.T) {
 			_, _ = dupDB.ExecContext(ctx, "DROP TABLE IF EXISTS schemaversion")
 			_ = dupDB.Close()
 		}()
-		dup, err := gostgrator.NewGostgrator(dupCfg, dupDB)
+		dup, err := gostgrator.NewGostgrator(dupCfg, gostgrator.NewPostgresClient(dupCfg, dupDB))
 		if err != nil {
 			t.Fatalf("failed to create gostgrator for duplicate test: %v", err)
 		}
@@ -278,12 +278,12 @@ func TestSqliteMigrations(t *testing.T) {
 
 	cfg := gostgrator.Config{
 		Driver:            "sqlite",
-		MigrationPattern:  "testdata/migrations/*",
+		Migrations:        gostgrator.DiskMigrations{Pattern: "testdata/migrations/*"},
 		SchemaTable:       "versions",
 		ValidateChecksums: true,
 	}
 
-	g, err := gostgrator.NewGostgrator(cfg, db)
+	g, err := gostgrator.NewGostgrator(cfg, gostgrator.NewSqlite3Client(cfg, db))
 	if err != nil {
 		t.Fatalf("failed to create sqlite gostgrator: %v", err)
 	}

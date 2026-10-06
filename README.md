@@ -148,59 +148,38 @@ Full API docs live on [PkgGoDev][pkg-go-dev-url].
 
 ### Database connections and SQL dialects
 
-To run migrations from your Go application, pass a configuration and an initialized [`*sql.DB`](https://pkg.go.dev/database/sql#DB) to `gostgrator.NewGostgrator`.
+To run migrations from your Go application, create a database client from an initialized [`*sql.DB`](https://pkg.go.dev/database/sql#DB), then pass the client and migration configuration to `gostgrator.NewGostgrator`.
 You can reuse your application's existing database connection; your application remains responsible for opening and closing it.
 
-`Config.Driver` selects Gostgrator's SQL dialect, not the Go driver used to open the connection:
+Choose the client constructor that matches your database:
 
-| Database | `Config.Driver` | Example driver name passed to `sql.Open` |
+| Database | Client constructor | Example driver name passed to `sql.Open` |
 | --- | --- | --- |
-| PostgreSQL | `"pg"` | `"pgx"` |
-| SQLite | `"sqlite"` (or the legacy alias `"sqlite3"`) | `"sqlite"` with modernc SQLite |
-
-Gostgrator uses the dialect to inspect, create, and update its migration tracking table (`schemaversion` by default, configurable through `Config.SchemaTable`).
-It executes the SQL in your migration files as supplied; it does not translate that SQL between databases.
-Write migrations for the database you are using.
-
-Set `Config.Driver` explicitly to match the database behind `db`.
-Go's `database/sql` API does not expose a standard SQL dialect identifier, and Gostgrator does not infer one from the connection.
-An empty or unsupported value is rejected; a supported value is not checked against the actual database when constructing the instance.
-
-#### Other drivers and custom dialects
-
-You can supply a `*sql.DB` opened by another compatible PostgreSQL or SQLite driver while keeping `Config.Driver` set to `"pg"` or `"sqlite"`.
-The driver's registered name does not need to match this setting, but it must support the SQL and execution behavior your migrations require.
-
-
-To use a custom dialect or wrap database operations, implement the exported [`Client`](https://pkg.go.dev/github.com/bcomnes/gostgrator#Client) interface and pass it to `NewGostgratorWithClient`.
-The client handles SQL execution and migration tracking-table operations; Gostgrator still handles loading migrations, ordering, checksum validation, and orchestration.
-You can also wrap an existing built-in client rather than implementing every operation yourself.
-
-Given an initialized `customClient` implementing `gostgrator.Client`, construct the migrator as follows:
+| PostgreSQL | `NewPostgresClient` | `"pgx"` |
+| SQLite | `NewSqlite3Client` | `"sqlite"` with modernc SQLite |
 
 ```go
-g, err := gostgrator.NewGostgratorWithClient(gostgrator.Config{
-    Migrations: gostgrator.DiskMigrations{
-        Pattern: "migrations/*.sql",
-    },
-}, customClient)
+client := gostgrator.NewPostgresClient(gostgrator.Config{
+    SchemaTable: "schemaversion",
+}, db)
+
+g, err := gostgrator.NewGostgrator(gostgrator.Config{
+    Migrations: gostgrator.DiskMigrations{Pattern: "migrations/*.sql"},
+}, client)
 if err != nil {
     return err
 }
 _, err = g.Migrate(ctx, "max")
 ```
 
-Select migration files through `Config.Migrations`, using `DiskMigrations` or `FSMigrations`.
-This constructor rejects the legacy `Config.MigrationPattern` field; that compatibility option remains available through `NewGostgrator`.
-Other migration configuration validation and defaults match `NewGostgrator`, but this constructor does not select or configure a database client.
-`Config.Driver`, `Config.Conn`, and `Config.SchemaTable` do not configure or override the supplied client: configure its database and tracking table yourself before passing it in.
-No supported `Config.Driver` value is required.
-Nil clients, including typed nil implementations, are rejected.
+Gostgrator uses the dialect to inspect, create, and update its migration tracking table (`schemaversion` by default, configurable through `Config.SchemaTable`).
+It executes the SQL in your migration files as supplied; it does not translate that SQL between databases.
+Write migrations for the database you are using.
 
-Your application owns the client's database resources and remains responsible for closing them.
-The `Client` interface uses `*sql.Rows` and `sql.Result`, so it remains tied to `database/sql` rather than supporting arbitrary database APIs.
-A custom dialect must implement the required bookkeeping operations, and your migration SQL must still be compatible with its database.
-
+The client constructor selects its dialect regardless of `Config.Driver` and defaults an empty `SchemaTable` to `schemaversion`.
+Pass tracking-table settings to the client constructor, not to `NewGostgrator`.
+Go's `database/sql` API does not expose a standard SQL dialect identifier, so the chosen client must match the database behind `db`.
+For configuration-driven selection, `NewClient(cfg, db)` remains available: it accepts `Config.Driver` values `"pg"`, `"sqlite"`, or the legacy alias `"sqlite3"` and returns a client or an error.
 
 ### Choose where migrations are loaded from
 
@@ -220,13 +199,13 @@ To load migrations from disk, use the following configuration.
 This example assumes `db` is an initialized SQLite `*sql.DB` and `ctx` is a `context.Context`:
 
 ```go
+client := gostgrator.NewSqlite3Client(gostgrator.Config{}, db)
 cfg := gostgrator.Config{
-    Driver: "sqlite",
     Migrations: gostgrator.DiskMigrations{
         Pattern: "migrations/*.sql",
     },
 }
-g, err := gostgrator.NewGostgrator(cfg, db)
+g, err := gostgrator.NewGostgrator(cfg, client)
 if err != nil {
     return err
 }
@@ -252,10 +231,10 @@ Both options require a nonempty pattern, and `FSMigrations` also requires a nonn
 
 #### Existing configurations and CLI usage
 
-If you already use `Config.MigrationPattern` with `NewGostgrator`, you can keep using it to load migrations from disk.
-The newer `NewGostgratorWithClient` constructor only accepts migration sources through `Config.Migrations`.
-Set either `Migrations` or `MigrationPattern`, not both.
-The CLI continues to select disk files with `-migration-pattern`; `Config.Migrations` is for applications using the Go library.
+This API is a breaking change for library callers: `NewGostgrator` now takes a `Client` instead of `*sql.DB`, and the separate `NewGostgratorWithClient` constructor is removed.
+Construct a built-in or custom client first, pass `SchemaTable` to that client, and replace `MigrationPattern: pattern` with `Migrations: gostgrator.DiskMigrations{Pattern: pattern}`.
+The CLI continues to accept `-migration-pattern` and the existing JSON configuration; it converts the pattern into a disk source internally.
+`CreateMigration` still supports the legacy pattern field for scaffolding migration files.
 
 ### Embed migrations in a binary
 
@@ -277,14 +256,14 @@ import (
 var migrations embed.FS
 
 func Migrate(ctx context.Context, db *sql.DB) error {
+    client := gostgrator.NewSqlite3Client(gostgrator.Config{}, db)
     g, err := gostgrator.NewGostgrator(gostgrator.Config{
-        Driver: "sqlite",
         Migrations: gostgrator.FSMigrations{
             FS:      migrations,
             Pattern: "migrations/*.sql",
         },
         ValidateChecksums: true,
-    }, db)
+    }, client)
     if err != nil {
         return err
     }
@@ -323,6 +302,83 @@ Use `"timestamp"` instead of `"int"` for Unix timestamp numbering.
 
 `CreateMigration` rejects `FSMigrations`, including filesystems backed by disk, because the `fs.FS` interface is read-only.
 Create files through a disk source during development, then rebuild the binary to update embedded migrations.
+
+### Advanced: custom clients and dialects
+
+The built-in clients cover normal PostgreSQL and SQLite usage.
+Custom clients are an escape hatch for wrapping database operations or supporting another SQL dialect.
+
+You can supply a `*sql.DB` opened by another compatible PostgreSQL or SQLite driver to the matching client constructor.
+The driver must support the SQL and execution behavior your migrations require.
+
+
+To use a custom dialect or wrap database operations, implement the exported [`Client`](https://pkg.go.dev/github.com/bcomnes/gostgrator#Client) interface and pass it to `NewGostgrator`.
+The client handles SQL execution and migration tracking-table operations; Gostgrator still handles loading migrations, ordering, checksum validation, and orchestration.
+You can also wrap an existing built-in client rather than implementing every operation yourself.
+
+For example, this custom client logs whether each execution requested by Gostgrator succeeded, while delegating SQLite bookkeeping to the built-in client:
+
+```go
+package database
+
+import (
+    "context"
+    "database/sql"
+    "log"
+
+    "github.com/bcomnes/gostgrator"
+)
+
+type loggingClient struct {
+    gostgrator.Client
+    logger *log.Logger
+}
+
+var _ gostgrator.Client = (*loggingClient)(nil)
+
+func (c *loggingClient) ExecContext(ctx context.Context, script string) (sql.Result, error) {
+    result, err := c.Client.ExecContext(ctx, script)
+    c.logger.Printf("SQL execution succeeded: %t", err == nil)
+    return result, err
+}
+
+func Migrate(ctx context.Context, db *sql.DB, logger *log.Logger) error {
+    client := &loggingClient{
+        Client: gostgrator.NewSqlite3Client(gostgrator.Config{
+            SchemaTable: "app_migrations",
+        }, db),
+        logger: logger,
+    }
+    g, err := gostgrator.NewGostgrator(gostgrator.Config{
+        Migrations: gostgrator.DiskMigrations{
+            Pattern: "migrations/*.sql",
+        },
+    }, client)
+    if err != nil {
+        return err
+    }
+    _, err = g.Migrate(ctx, "max")
+    return err
+}
+```
+
+Pass an initialized SQLite `*sql.DB` and a nonnil logger, such as `log.Default()`.
+Embedding the `Client` interface delegates every method except the overridden `ExecContext`, which preserves the underlying result and error.
+The wrapper logs migration-script execution and persistence of migration actions without logging potentially sensitive SQL text.
+It does not intercept queries or SQL executed internally by the wrapped client's `EnsureTable` method; those calls do not pass through the wrapper.
+
+This example customizes an existing dialect rather than adding a new one.
+To support another database dialect, implement all methods of `Client`, including tracking-table inspection and creation, version and checksum queries, and migration-action persistence.
+
+Select migration files through `Config.Migrations`, using `DiskMigrations` or `FSMigrations`.
+`NewGostgrator` rejects the legacy `Config.MigrationPattern` field and does not select or configure a database client.
+`Config.Driver`, `Config.Conn`, and `Config.SchemaTable` do not configure or override the supplied client: configure its database and tracking table yourself before passing it in.
+No supported `Config.Driver` value is required.
+Nil clients, including typed nil implementations, are rejected.
+
+Your application owns the client's database resources and remains responsible for closing them.
+The `Client` interface uses `*sql.Rows` and `sql.Result`, so it remains tied to `database/sql` rather than supporting arbitrary database APIs.
+A custom dialect must implement the required bookkeeping operations, and your migration SQL must still be compatible with its database.
 
 ---
 

@@ -12,24 +12,24 @@ import (
 // Config holds settings for migrations.
 type Config struct {
 	// Driver selects the SQL dialect: "pg", "sqlite", or the legacy alias "sqlite3".
-	// It is unused by NewGostgratorWithClient.
+	// It is used by NewClient, not by NewGostgrator or dialect-specific constructors.
 	Driver string `json:"driver,omitempty"`
 	// SchemaTable is the name of the migration table for built-in clients.
-	// NewGostgratorWithClient leaves table configuration to the supplied client.
+	// Pass it to the client constructor; NewGostgrator does not configure the client.
 	SchemaTable string `json:"schemaTable,omitempty"`
 	// Migrations selects an explicit disk or filesystem migration source.
 	// It must not be combined with MigrationPattern.
 	Migrations MigrationSource `json:"-"`
 	// MigrationPattern is the legacy disk glob pattern (e.g. "./migrations/*.sql").
 	// It is used when Migrations is nil by the legacy APIs.
-	// NewGostgratorWithClient rejects this field; use Migrations instead.
+	// NewGostgrator rejects this field; use Migrations instead.
 	MigrationPattern string `json:"migrationPattern,omitempty"`
 	// Newline is the desired newline style ("LF", "CR", or "CRLF").
 	Newline string `json:"newline,omitempty"`
 	// ValidateChecksums indicates if the tool should validate migration checksums.
 	ValidateChecksums bool `json:"validateChecksums,omitempty"`
 	// Conn is the connection string used by the CLI.
-	// Neither constructor opens a connection or uses this field.
+	// Library constructors do not open a connection or use this field.
 	Conn string `json:"conn,omitempty"`
 }
 
@@ -49,32 +49,16 @@ type Gostgrator struct {
 	client     Client
 }
 
-// NewGostgrator creates a new Gostgrator instance with the provided configuration and database connection.
-// Config.Driver selects the built-in client. The caller owns the database connection.
-func NewGostgrator(cfg Config, db *sql.DB) (*Gostgrator, error) {
-	cfg, err := normalizeConfig(cfg)
-	if err != nil {
-		return nil, err
-	}
-	client, err := NewClient(cfg, db)
-	if err != nil {
-		return nil, err
-	}
-	return &Gostgrator{
-		cfg:    cfg,
-		client: client,
-	}, nil
-}
-
-// NewGostgratorWithClient creates a Gostgrator using a caller-provided Client.
+// NewGostgrator creates a Gostgrator using a caller-provided Client.
+// Use NewPostgresClient or NewSqlite3Client for built-in database support,
+// or supply a custom implementation.
 // The client owns SQL execution and migration tracking-table behavior; the caller
 // is responsible for configuring it and managing its database resources.
 // Config.Driver, Config.Conn, and Config.SchemaTable do not configure or override
 // the supplied client. Use Config.Migrations to select migration files;
-// a nonempty Config.MigrationPattern is rejected. Other migration settings and
-// defaults apply as in NewGostgrator.
+// a nonempty Config.MigrationPattern is rejected.
 // A nil client, including a typed nil implementation, is rejected.
-func NewGostgratorWithClient(cfg Config, client Client) (*Gostgrator, error) {
+func NewGostgrator(cfg Config, client Client) (*Gostgrator, error) {
 	if client == nil {
 		return nil, fmt.Errorf("migration client must not be nil")
 	}
@@ -90,7 +74,7 @@ func NewGostgratorWithClient(cfg Config, client Client) (*Gostgrator, error) {
 		return nil, err
 	}
 	if cfg.MigrationPattern != "" {
-		return nil, fmt.Errorf("NewGostgratorWithClient does not support MigrationPattern; use Config.Migrations with DiskMigrations or FSMigrations")
+		return nil, fmt.Errorf("NewGostgrator does not support MigrationPattern; use Config.Migrations with DiskMigrations or FSMigrations")
 	}
 	return &Gostgrator{cfg: cfg, client: client}, nil
 }
@@ -99,9 +83,7 @@ func normalizeConfig(cfg Config) (Config, error) {
 	if _, _, err := migrationSource(cfg); err != nil {
 		return Config{}, err
 	}
-	if cfg.SchemaTable == "" {
-		cfg.SchemaTable = DefaultConfig.SchemaTable
-	}
+
 	if !cfg.ValidateChecksums {
 		cfg.ValidateChecksums = DefaultConfig.ValidateChecksums
 	}

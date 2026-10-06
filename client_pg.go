@@ -11,8 +11,14 @@ type PostgresClient struct {
 	baseClient
 }
 
-// NewPostgresClient creates a new PostgresClient.
+// NewPostgresClient creates a PostgreSQL client using the supplied database.
+// SchemaTable defaults to DefaultConfig.SchemaTable. The constructor selects the
+// PostgreSQL dialect regardless of Config.Driver; the caller owns db.
 func NewPostgresClient(cfg Config, db *sql.DB) Client {
+	cfg.Driver = "pg"
+	if cfg.SchemaTable == "" {
+		cfg.SchemaTable = DefaultConfig.SchemaTable
+	}
 	pgClient := &PostgresClient{
 		baseClient: baseClient{
 			cfg: cfg,

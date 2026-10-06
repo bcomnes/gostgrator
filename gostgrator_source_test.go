@@ -18,8 +18,7 @@ func sourceSQLite(t *testing.T, cfg Config) (*Gostgrator, *sql.DB) {
 	}
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
-	cfg.Driver = "sqlite"
-	g, err := NewGostgrator(cfg, db)
+	g, err := NewGostgrator(cfg, NewSqlite3Client(cfg, db))
 	if err != nil {
 		t.Fatal(err)
 	}
