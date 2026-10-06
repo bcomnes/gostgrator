@@ -146,9 +146,18 @@ gostgrator-pg list
 
 Full API docs live on [PkgGoDev][pkg-go-dev-url].
 
-### Typed migration sources
+### Choose where migrations are loaded from
 
-Set `Config.Migrations` to a `MigrationSource` to choose where SQL migrations are read. Use `DiskMigrations{Pattern: "migrations/*.sql"}` for local files or `FSMigrations{FS: migrationFS, Pattern: "migrations/*.sql"}` for an [`fs.FS`](https://pkg.go.dev/io/fs#FS), including [`embed.FS`](https://pkg.go.dev/embed#FS), [`os.DirFS`](https://pkg.go.dev/os#DirFS), or [`fstest.MapFS`](https://pkg.go.dev/testing/fstest#MapFS). Both values and nonnil pointers to these source types are accepted.
+To run migrations from your Go application, pass a configuration and an initialized `*sql.DB` to `gostgrator.NewGostgrator`. You can reuse your application's existing database connection. Set `Config.Driver` to `"sqlite"` or `"pg"` to match the database; Gostgrator uses this to select the SQL dialect for tracking applied migrations.
+
+Set `Config.Migrations` to one of two options:
+
+- **`DiskMigrations`** reads SQL files from disk when migrations run. Use this when you deploy a migrations directory alongside your application.
+- **`FSMigrations`** reads SQL files from a Go filesystem supplied in its `FS` field. Use this with `embed.FS` to package migrations inside your executable, without needing a migrations directory at runtime. See [Embed migrations in a binary](#embed-migrations-in-a-binary) below.
+
+Both options have a `Pattern` field that selects which files to load. For example, `migrations/*.sql` selects SQL files directly inside the `migrations` directory. Name the files using the [migration naming convention](#migrations), such as `001.do.create-users.sql` and `001.undo.create-users.sql`.
+
+To load migrations from disk, use the following configuration. This example assumes `db` is an initialized SQLite `*sql.DB` and `ctx` is a `context.Context`:
 
 ```go
 cfg := gostgrator.Config{
@@ -164,11 +173,19 @@ if err != nil {
 _, err = g.Migrate(ctx, "max")
 ```
 
-`DiskMigrations.Pattern` uses filesystem glob paths, including relative or absolute paths. `FSMigrations.Pattern` uses slash-separated paths relative to the supplied filesystem root, with no leading slash or `.` or `..` path components. For example, use `migrations/*.sql`, not `./migrations/*.sql`. Use `fs.Sub` to select a subtree and then match `*.sql` relative to that subtree. Glob patterns follow `filepath.Glob` for disk and `fs.Glob` for `fs.FS`; `**` is not a recursive wildcard.
+`Migrate(ctx, "max")` applies pending migrations up to the highest available version. For disk migrations, relative paths are resolved from the application's working directory; absolute paths are also supported.
 
-Explicit sources require nonempty patterns, and `FSMigrations` requires a nonnil filesystem. Nil source pointers are invalid.
+#### Filesystem paths and configuration
 
-When `Config.Migrations` is nil, the legacy `Config.MigrationPattern` remains supported, so existing library configurations do not need to change. Setting both `Migrations` and a nonempty `MigrationPattern` is an error rather than a precedence rule. The CLI continues to use `-migration-pattern`; typed sources are a Go library API.
+`FSMigrations` accepts an [`fs.FS`](https://pkg.go.dev/io/fs#FS), Go's standard read-only filesystem interface. Implementations include [`embed.FS`](https://pkg.go.dev/embed#FS) for files compiled into your binary, [`os.DirFS`](https://pkg.go.dev/os#DirFS) for a directory on disk, and [`fstest.MapFS`](https://pkg.go.dev/testing/fstest#MapFS) for in-memory test files.
+
+Unlike disk paths, `FSMigrations.Pattern` is relative to the supplied filesystem's root and uses forward slashes, with no leading slash or `.` or `..` path components. Use `migrations/*.sql`, not `./migrations/*.sql`. To make the migrations directory itself the root, use [`fs.Sub`](https://pkg.go.dev/io/fs#Sub) and then select files with `*.sql`.
+
+Patterns follow [`filepath.Glob`](https://pkg.go.dev/path/filepath#Glob) for `DiskMigrations` and [`fs.Glob`](https://pkg.go.dev/io/fs#Glob) for `FSMigrations`. Neither treats `**` as a recursive wildcard. Both options require a nonempty pattern, and `FSMigrations` also requires a nonnil filesystem. `Config.Migrations` accepts either an option value or a nonnil pointer to one; its interface type is `MigrationSource`.
+
+#### Existing configurations and CLI usage
+
+If you already use `Config.MigrationPattern`, you can keep using it to load migrations from disk. Set either `Migrations` or `MigrationPattern`, not both. The CLI continues to select disk files with `-migration-pattern`; `Config.Migrations` is for applications using the Go library.
 
 ### Embed migrations in a binary
 
