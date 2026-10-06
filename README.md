@@ -173,8 +173,7 @@ The example assumes a PostgreSQL `db` and a `context.Context` named `ctx`.
 Your application owns and closes the database connection.
 
 The client chooses the bookkeeping dialect; migration SQL runs unchanged.
-No `Config.Driver` is needed, and `SchemaTable` belongs to the client configuration.
-For string-based selection, `NewClient(cfg, db)` accepts `Config.Driver` values `"pg"`, `"sqlite"`, or `"sqlite3"`.
+Set `SchemaTable` on the client and `Migrations` on the migrator.
 
 ### Choose where migrations are loaded from
 
@@ -215,12 +214,6 @@ Both sources use the same naming, ordering, duplicate detection, and checksum va
 `Config.Newline` normalizes checksums without changing the SQL executed.
 Migrations returned by `GetMigrations` retain their source for `RunMigrations`, even with a different runner; manually constructed migrations read `Filename` from disk.
 
-#### Existing configurations and CLI usage
-
-This API is a breaking change for library callers: `NewGostgrator` now takes a `Client` instead of `*sql.DB`, and the separate `NewGostgratorWithClient` constructor is removed.
-Construct a built-in or custom client first, pass `SchemaTable` to that client, and replace `MigrationPattern: pattern` with `Migrations: gostgrator.DiskMigrations{Pattern: pattern}`.
-The CLI continues to accept `-migration-pattern` and the existing JSON configuration; it converts the pattern into a disk source internally.
-`CreateMigration` still supports the legacy pattern field for scaffolding migration files.
 
 ### Embed migrations in a binary
 
@@ -299,7 +292,7 @@ migrations/
 ```
 
 Subsequent calls increment the version; use `"timestamp"` for Unix timestamp numbering.
-Creation writes to disk only (`DiskMigrations` or legacy `MigrationPattern`), not `FSMigrations`.
+Use `DiskMigrations` for file creation; `FSMigrations` is read-only.
 For embedded migrations, edit these files and rebuild.
 
 ### Advanced: custom clients and dialects
