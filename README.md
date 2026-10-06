@@ -213,6 +213,7 @@ _, err = g.Migrate(ctx, "max")
 ```
 
 `Migrate(ctx, "max")` applies pending migrations up to the highest available version.
+Use `Migrate(ctx, "0")` to undo all migrations or `Down(ctx, 1)` to roll back one version step.
 For disk migrations, relative paths are resolved from the application's working directory; absolute paths are also supported.
 
 #### Filesystem paths and configuration
@@ -229,6 +230,10 @@ Neither treats `**` as a recursive wildcard.
 Both options require a nonempty pattern, and `FSMigrations` also requires a nonnil filesystem.
 `Config.Migrations` accepts either an option value or a nonnil pointer to one; its interface type is `MigrationSource`.
 
+Both sources use the same naming, ordering, duplicate detection, and checksum validation.
+`Config.Newline` normalizes checksums without changing the SQL executed.
+Migrations returned by `GetMigrations` retain their source for `RunMigrations`, even with a different runner; manually constructed migrations read `Filename` from disk.
+
 #### Existing configurations and CLI usage
 
 This API is a breaking change for library callers: `NewGostgrator` now takes a `Client` instead of `*sql.DB`, and the separate `NewGostgratorWithClient` constructor is removed.
@@ -238,7 +243,7 @@ The CLI continues to accept `-migration-pattern` and the existing JSON configura
 
 ### Embed migrations in a binary
 
-Place the migrations directory inside the package that embeds it, alongside the Go source file containing the directive:
+Keep the SQL files beside the Go file that embeds them:
 
 ```text
 myapp/
@@ -256,11 +261,7 @@ myapp/
             └── 002.undo.add-email.sql
 ```
 
-In `internal/database/migrations.go`, `//go:embed migrations` embeds the sibling `internal/database/migrations/` directory at build time.
-The path is relative to the directory containing that Go source file—not the module root, the application's working directory, or the compiled binary.
-Inside the resulting `embed.FS`, the files retain paths such as `migrations/001.do.create-users.sql`, so Gostgrator selects them with `Pattern: "migrations/*.sql"`.
-
-The contents of `internal/database/migrations.go` are:
+`internal/database/migrations.go` — embed paths are relative to this file's directory:
 
 ```go
 package database
@@ -294,20 +295,11 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 }
 ```
 
-The example expects a SQLite connection opened with `sql.Open("sqlite", ...)`.
-Embedded SQL is built into the binary and does not require migration files in the runtime working directory.
-Changing embedded migrations requires rebuilding the binary.
+Pass a SQLite `*sql.DB` opened with `sql.Open("sqlite", ...)`.
+Deploy the binary without the SQL directory; rebuild it when migrations change.
 
-The directory directive embeds eligible files recursively, but `migrations/*.sql` only selects migrations directly inside that directory.
-Directory embedding excludes dotfiles and underscore-prefixed files by default; use `//go:embed all:migrations` if those are needed.
-Embedding paths are relative to the package containing the directive and cannot escape it using `..`.
-
-Use `g.Migrate(ctx, "0")` to apply the undo migrations back to version zero, or `g.Down(ctx, 1)` to roll back one version step.
-File naming, migration ordering, duplicate version/action detection, and checksum validation work the same way for disk and filesystem sources.
-`Config.Newline` normalizes content for checksum calculation without rewriting the SQL executed against the database.
-
-Migrations returned by `GetMigrations` retain their source for later `RunMigrations` calls, even when passed to a different runner.
-A manually constructed `Migration` without a retained source reads its `Filename` from disk.
+`//go:embed migrations` includes eligible files recursively; `migrations/*.sql` selects only the directory's immediate SQL files.
+See Go's [`embed` documentation](https://pkg.go.dev/embed#hdr-Directives) for path restrictions and including dotfiles with `all:`.
 
 ### Create migration files
 
