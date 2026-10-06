@@ -190,8 +190,9 @@ if err != nil {
 _, err = g.Migrate(ctx, "max")
 ```
 
-This constructor also supports `FSMigrations` and the legacy `MigrationPattern`.
-It uses the same migration configuration validation and defaults as `NewGostgrator`, but it does not select or configure a database client.
+Select migration files through `Config.Migrations`, using `DiskMigrations` or `FSMigrations`.
+This constructor rejects the legacy `Config.MigrationPattern` field; that compatibility option remains available through `NewGostgrator`.
+Other migration configuration validation and defaults match `NewGostgrator`, but this constructor does not select or configure a database client.
 `Config.Driver`, `Config.Conn`, and `Config.SchemaTable` do not configure or override the supplied client: configure its database and tracking table yourself before passing it in.
 No supported `Config.Driver` value is required.
 Nil clients, including typed nil implementations, are rejected.
@@ -251,7 +252,8 @@ Both options require a nonempty pattern, and `FSMigrations` also requires a nonn
 
 #### Existing configurations and CLI usage
 
-If you already use `Config.MigrationPattern`, you can keep using it to load migrations from disk.
+If you already use `Config.MigrationPattern` with `NewGostgrator`, you can keep using it to load migrations from disk.
+The newer `NewGostgratorWithClient` constructor only accepts migration sources through `Config.Migrations`.
 Set either `Migrations` or `MigrationPattern`, not both.
 The CLI continues to select disk files with `-migration-pattern`; `Config.Migrations` is for applications using the Go library.
 

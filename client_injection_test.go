@@ -139,11 +139,26 @@ func TestClientInjectionRejectsNil(t *testing.T) {
 	var custom *injectionClient
 	for name, client := range map[string]Client{"nil": nil, "typed nil built-in": sqlite, "typed nil custom": custom} {
 		t.Run(name, func(t *testing.T) {
-			g, err := NewGostgratorWithClient(Config{MigrationPattern: "testdata/source_sqlite/*.sql"}, client)
+			g, err := NewGostgratorWithClient(Config{Migrations: DiskMigrations{Pattern: "testdata/source_sqlite/*.sql"}}, client)
 			if err == nil || g != nil {
 				t.Fatalf("constructor = %v, %v; want nil and error", g, err)
 			}
 		})
+	}
+}
+
+func TestClientInjectionRejectsLegacyPattern(t *testing.T) {
+	client, db := injectionSQLite(t)
+	cfg := Config{Driver: "sqlite", MigrationPattern: "testdata/source_sqlite/*.sql"}
+	g, err := NewGostgratorWithClient(cfg, client)
+	if g != nil || err == nil || !strings.Contains(err.Error(), "use Config.Migrations") {
+		t.Fatalf("constructor = %v, %v; want error directing callers to Config.Migrations", g, err)
+	}
+	if len(client.calls) != 0 {
+		t.Fatalf("constructor performed database work: %v", client.calls)
+	}
+	if _, err := NewGostgrator(cfg, db); err != nil {
+		t.Fatalf("existing constructor must retain legacy support: %v", err)
 	}
 }
 
@@ -156,8 +171,8 @@ func TestClientInjectionConfigParity(t *testing.T) {
 		cfg     Config
 		invalid bool
 	}{
-		"defaults":         {cfg: Config{}},
-		"legacy":           {cfg: Config{MigrationPattern: "testdata/source_sqlite/*.sql"}},
+		"defaults": {cfg: Config{}},
+
 		"disk":             {cfg: Config{Migrations: DiskMigrations{Pattern: "testdata/source_sqlite/*.sql"}}},
 		"disk pointer":     {cfg: Config{Migrations: &DiskMigrations{Pattern: "testdata/source_sqlite/*.sql"}}},
 		"FS":               {cfg: Config{Migrations: FSMigrations{FS: files, Pattern: "*.sql"}}},
@@ -233,9 +248,9 @@ func TestClientInjectionBuiltInSchemaDefault(t *testing.T) {
 
 func TestClientInjectionMigrations(t *testing.T) {
 	for name, cfg := range map[string]Config{
-		"legacy": {MigrationPattern: "testdata/source_sqlite/*.sql"},
-		"disk":   {Migrations: DiskMigrations{Pattern: "testdata/source_sqlite/*.sql"}},
-		"FS":     {Migrations: FSMigrations{FS: sourceFixtureFS(t), Pattern: "*.sql"}},
+
+		"disk": {Migrations: DiskMigrations{Pattern: "testdata/source_sqlite/*.sql"}},
+		"FS":   {Migrations: FSMigrations{FS: sourceFixtureFS(t), Pattern: "*.sql"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			client, db := injectionSQLite(t)

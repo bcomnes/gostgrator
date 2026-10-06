@@ -21,7 +21,8 @@ type Config struct {
 	// It must not be combined with MigrationPattern.
 	Migrations MigrationSource `json:"-"`
 	// MigrationPattern is the legacy disk glob pattern (e.g. "./migrations/*.sql").
-	// It is used when Migrations is nil.
+	// It is used when Migrations is nil by the legacy APIs.
+	// NewGostgratorWithClient rejects this field; use Migrations instead.
 	MigrationPattern string `json:"migrationPattern,omitempty"`
 	// Newline is the desired newline style ("LF", "CR", or "CRLF").
 	Newline string `json:"newline,omitempty"`
@@ -69,7 +70,9 @@ func NewGostgrator(cfg Config, db *sql.DB) (*Gostgrator, error) {
 // The client owns SQL execution and migration tracking-table behavior; the caller
 // is responsible for configuring it and managing its database resources.
 // Config.Driver, Config.Conn, and Config.SchemaTable do not configure or override
-// the supplied client. Migration settings and defaults apply as in NewGostgrator.
+// the supplied client. Use Config.Migrations to select migration files;
+// a nonempty Config.MigrationPattern is rejected. Other migration settings and
+// defaults apply as in NewGostgrator.
 // A nil client, including a typed nil implementation, is rejected.
 func NewGostgratorWithClient(cfg Config, client Client) (*Gostgrator, error) {
 	if client == nil {
@@ -85,6 +88,9 @@ func NewGostgratorWithClient(cfg Config, client Client) (*Gostgrator, error) {
 	cfg, err := normalizeConfig(cfg)
 	if err != nil {
 		return nil, err
+	}
+	if cfg.MigrationPattern != "" {
+		return nil, fmt.Errorf("NewGostgratorWithClient does not support MigrationPattern; use Config.Migrations with DiskMigrations or FSMigrations")
 	}
 	return &Gostgrator{cfg: cfg, client: client}, nil
 }
