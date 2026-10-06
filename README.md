@@ -238,7 +238,29 @@ The CLI continues to accept `-migration-pattern` and the existing JSON configura
 
 ### Embed migrations in a binary
 
-Given a `migrations` directory beside this Go source file, embed the SQL files and pass the filesystem to `FSMigrations`:
+Place the migrations directory inside the package that embeds it, alongside the Go source file containing the directive:
+
+```text
+myapp/
+├── go.mod
+├── cmd/
+│   └── myapp/
+│       └── main.go
+└── internal/
+    └── database/
+        ├── migrations.go
+        └── migrations/
+            ├── 001.do.create-users.sql
+            ├── 001.undo.create-users.sql
+            ├── 002.do.add-email.sql
+            └── 002.undo.add-email.sql
+```
+
+In `internal/database/migrations.go`, `//go:embed migrations` embeds the sibling `internal/database/migrations/` directory at build time.
+The path is relative to the directory containing that Go source file—not the module root, the application's working directory, or the compiled binary.
+Inside the resulting `embed.FS`, the files retain paths such as `migrations/001.do.create-users.sql`, so Gostgrator selects them with `Pattern: "migrations/*.sql"`.
+
+The contents of `internal/database/migrations.go` are:
 
 ```go
 package database
