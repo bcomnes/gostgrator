@@ -348,7 +348,7 @@ func Migrate(ctx context.Context, db *sql.DB, logger *log.Logger) error {
 Pass a SQLite `*sql.DB` and a nonnil logger such as `log.Default()`.
 The wrapper logs migration and bookkeeping executions, not SQL text, queries, or calls made internally by the wrapped client's `EnsureTable`.
 
-For a new dialect, implement all `Client` methods: SQL execution, tracking-table management, version/checksum queries, and action persistence.
+For a new dialect, implement all [`Client`](https://pkg.go.dev/github.com/bcomnes/gostgrator#Client) methods: SQL execution, tracking-table management, version/checksum queries, and action persistence.
 The interface uses `*sql.Rows` and `sql.Result`, so implementations remain tied to `database/sql`.
 
 Configure and manage the client's resources yourself; `NewGostgrator` does not override them with `Config.Driver`, `Conn`, or `SchemaTable`.
