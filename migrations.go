@@ -4,7 +4,9 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -20,7 +22,7 @@ type Migration struct {
 	// Action, e.g., "do" or "undo".
 	Action string
 
-	// Filename is the path to the migration file.
+	// Filename is the OS path, or the path relative to the source filesystem.
 	Filename string
 
 	// Name is an optional descriptive name of the migration.
@@ -28,15 +30,24 @@ type Migration struct {
 
 	// Md5 is the MD5 checksum of the migration file.
 	Md5 string
+
+	filesystem fs.FS
 }
 
 // getSQL reads the migration file's content.
 func (m *Migration) getSQL() (string, error) {
-	data, err := os.ReadFile(m.Filename)
+	data, err := readMigrationFile(m.filesystem, m.Filename)
 	if err != nil {
 		return "", err
 	}
 	return string(data), nil
+}
+
+func readMigrationFile(filesystem fs.FS, filename string) ([]byte, error) {
+	if filesystem != nil {
+		return fs.ReadFile(filesystem, filename)
+	}
+	return os.ReadFile(filename)
 }
 
 // sortMigrationsAsc sorts migrations in ascending order based on version.
@@ -94,18 +105,30 @@ func fileChecksum(filename, lineEnding string) (string, error) {
 
 // getMigrations scans for migration files matching the pattern and loads them.
 func getMigrations(cfg Config) ([]Migration, error) {
-	files, err := filepath.Glob(cfg.MigrationPattern)
+	filesystem, pattern, err := migrationSource(cfg)
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	if filesystem != nil {
+		files, err = fs.Glob(filesystem, pattern)
+	} else {
+		files, err = filepath.Glob(pattern)
+	}
 	if err != nil {
 		return nil, err
 	}
 	var migrations []Migration
 	migrationKeys := make(map[string]struct{})
 	for _, file := range files {
-		if filepath.Ext(file) != ".sql" {
+		base := filepath.Base(file)
+		if filesystem != nil {
+			base = path.Base(file)
+		}
+		ext := path.Ext(base)
+		if ext != ".sql" {
 			continue
 		}
-		base := filepath.Base(file)
-		ext := filepath.Ext(base)
 		baseNoExt := strings.TrimSuffix(base, ext)
 		parts := strings.Split(baseNoExt, ".")
 		if len(parts) < 2 {
@@ -121,16 +144,21 @@ func getMigrations(cfg Config) ([]Migration, error) {
 		if len(parts) > 2 {
 			name = strings.Join(parts[2:], ".")
 		}
-		md5sum, err := fileChecksum(file, cfg.Newline)
+		data, err := readMigrationFile(filesystem, file)
+		if err != nil {
+			return nil, err
+		}
+		md5sum, err := checksum(string(data), cfg.Newline)
 		if err != nil {
 			return nil, err
 		}
 		mig := Migration{
-			Version:  version,
-			Action:   action,
-			Filename: file,
-			Name:     name,
-			Md5:      md5sum,
+			Version:    version,
+			Action:     action,
+			Filename:   file,
+			Name:       name,
+			Md5:        md5sum,
+			filesystem: filesystem,
 		}
 		key := fmt.Sprintf("%d:%s", mig.Version, mig.Action)
 		if _, exists := migrationKeys[key]; exists {

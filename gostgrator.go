@@ -14,7 +14,11 @@ type Config struct {
 	Driver string `json:"driver,omitempty"`
 	// SchemaTable is the name of the migration table.
 	SchemaTable string `json:"schemaTable,omitempty"`
-	// MigrationPattern is the glob pattern for migration files (e.g. "./migrations/*.sql").
+	// Migrations selects an explicit disk or filesystem migration source.
+	// It must not be combined with MigrationPattern.
+	Migrations MigrationSource `json:"-"`
+	// MigrationPattern is the legacy disk glob pattern (e.g. "./migrations/*.sql").
+	// It is used when Migrations is nil.
 	MigrationPattern string `json:"migrationPattern,omitempty"`
 	// Newline is the desired newline style ("LF", "CR", or "CRLF").
 	Newline string `json:"newline,omitempty"`
@@ -42,6 +46,9 @@ type Gostgrator struct {
 
 // NewGostgrator creates a new Gostgrator instance with the provided configuration and database connection.
 func NewGostgrator(cfg Config, db *sql.DB) (*Gostgrator, error) {
+	if _, _, err := migrationSource(cfg); err != nil {
+		return nil, err
+	}
 	// Merge defaults.
 	if cfg.SchemaTable == "" {
 		cfg.SchemaTable = DefaultConfig.SchemaTable
