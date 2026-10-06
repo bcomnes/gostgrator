@@ -359,7 +359,9 @@ Nil clients, including typed nil implementations, are rejected.
 ## Why another migrator?
 
 * **CLI ‑ first** – instant productivity; no boilerplate code required.
-* **Typed Go API** – embed migrations programmatically when you need to.
+* **Typed Go API** – run migrations directly from your Go application.
+* **Embedded migrations** – ship SQL files inside your binary with `go:embed`; no runtime migrations directory needed.
+* **Custom adapter clients** – implement the [`Client`](https://pkg.go.dev/github.com/bcomnes/gostgrator#Client) interface to support another SQL dialect or wrap database operations.
 * **Checksum validation** – MD5 guardrails ensure applied migrations never drift.
 * **Up ⬆ / Down ⬇ parity** – every migration pair keeps rollbacks honest.
 * **Zero dependencies** – a single static binary per database driver.
