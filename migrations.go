@@ -15,6 +15,10 @@ import (
 )
 
 // Migration represents a single migration file.
+// Values are comparable, but equality includes the identity of the retained
+// filesystem source. Independently loaded filesystem migrations may compare
+// unequal despite identical metadata; compare the relevant public fields instead
+// when checking migration identity or content.
 type Migration struct {
 	// Version of the migration.
 	Version int
@@ -31,12 +35,21 @@ type Migration struct {
 	// Md5 is the MD5 checksum of the migration file.
 	Md5 string
 
+	source *migrationSourceRef
+}
+
+// A pointer keeps Migration comparable even when the filesystem contains a map.
+type migrationSourceRef struct {
 	filesystem fs.FS
 }
 
 // getSQL reads the migration file's content.
 func (m *Migration) getSQL() (string, error) {
-	data, err := readMigrationFile(m.filesystem, m.Filename)
+	var filesystem fs.FS
+	if m.source != nil {
+		filesystem = m.source.filesystem
+	}
+	data, err := readMigrationFile(filesystem, m.Filename)
 	if err != nil {
 		return "", err
 	}
@@ -118,6 +131,10 @@ func getMigrations(cfg Config) ([]Migration, error) {
 	if err != nil {
 		return nil, err
 	}
+	var source *migrationSourceRef
+	if filesystem != nil {
+		source = &migrationSourceRef{filesystem: filesystem}
+	}
 	var migrations []Migration
 	migrationKeys := make(map[string]struct{})
 	for _, file := range files {
@@ -153,12 +170,12 @@ func getMigrations(cfg Config) ([]Migration, error) {
 			return nil, err
 		}
 		mig := Migration{
-			Version:    version,
-			Action:     action,
-			Filename:   file,
-			Name:       name,
-			Md5:        md5sum,
-			filesystem: filesystem,
+			Version:  version,
+			Action:   action,
+			Filename: file,
+			Name:     name,
+			Md5:      md5sum,
+			source:   source,
 		}
 		key := fmt.Sprintf("%d:%s", mig.Version, mig.Action)
 		if _, exists := migrationKeys[key]; exists {
