@@ -225,17 +225,16 @@ myapp/
 ├── cmd/
 │   └── myapp/
 │       └── main.go
-└── internal/
-    └── database/
-        ├── migrations.go
-        └── migrations/
-            ├── 001.do.create-users.sql
-            ├── 001.undo.create-users.sql
-            ├── 002.do.add-email.sql
-            └── 002.undo.add-email.sql
+└── database/
+    ├── migrations.go
+    └── migrations/
+        ├── 001.do.create-users.sql
+        ├── 001.undo.create-users.sql
+        ├── 002.do.add-email.sql
+        └── 002.undo.add-email.sql
 ```
 
-`internal/database/migrations.go` — embed paths are relative to this file's directory:
+`database/migrations.go` — embed paths are relative to this file's directory:
 
 ```go
 package database
