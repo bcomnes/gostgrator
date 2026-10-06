@@ -148,7 +148,7 @@ Full API docs live on [PkgGoDev][pkg-go-dev-url].
 
 ### Typed migration sources
 
-Set `Config.Migrations` to a `MigrationSource` to choose where SQL migrations are read. Use `DiskMigrations{Pattern: "migrations/*.sql"}` for local files or `FSMigrations{FS: migrationFS, Pattern: "migrations/*.sql"}` for an `fs.FS`, including `embed.FS`, `os.DirFS`, or `fstest.MapFS`. Both values and nonnil pointers to these source types are accepted.
+Set `Config.Migrations` to a `MigrationSource` to choose where SQL migrations are read. Use `DiskMigrations{Pattern: "migrations/*.sql"}` for local files or `FSMigrations{FS: migrationFS, Pattern: "migrations/*.sql"}` for an [`fs.FS`](https://pkg.go.dev/io/fs#FS), including [`embed.FS`](https://pkg.go.dev/embed#FS), [`os.DirFS`](https://pkg.go.dev/os#DirFS), or [`fstest.MapFS`](https://pkg.go.dev/testing/fstest#MapFS). Both values and nonnil pointers to these source types are accepted.
 
 ```go
 cfg := gostgrator.Config{
