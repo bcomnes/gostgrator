@@ -148,7 +148,8 @@ Full API docs live on [PkgGoDev][pkg-go-dev-url].
 
 ### Database connections and SQL dialects
 
-To run migrations from your Go application, pass a configuration and an initialized [`*sql.DB`](https://pkg.go.dev/database/sql#DB) to `gostgrator.NewGostgrator`. You can reuse your application's existing database connection; your application remains responsible for opening and closing it.
+To run migrations from your Go application, pass a configuration and an initialized [`*sql.DB`](https://pkg.go.dev/database/sql#DB) to `gostgrator.NewGostgrator`.
+You can reuse your application's existing database connection; your application remains responsible for opening and closing it.
 
 `Config.Driver` selects Gostgrator's SQL dialect, not the Go driver used to open the connection:
 
@@ -157,15 +158,23 @@ To run migrations from your Go application, pass a configuration and an initiali
 | PostgreSQL | `"pg"` | `"pgx"` |
 | SQLite | `"sqlite"` (or the legacy alias `"sqlite3"`) | `"sqlite"` with modernc SQLite |
 
-Gostgrator uses the dialect to inspect, create, and update its migration tracking table (`schemaversion` by default, configurable through `Config.SchemaTable`). It executes the SQL in your migration files as supplied; it does not translate that SQL between databases. Write migrations for the database you are using.
+Gostgrator uses the dialect to inspect, create, and update its migration tracking table (`schemaversion` by default, configurable through `Config.SchemaTable`).
+It executes the SQL in your migration files as supplied; it does not translate that SQL between databases.
+Write migrations for the database you are using.
 
-Set `Config.Driver` explicitly to match the database behind `db`. Go's `database/sql` API does not expose a standard SQL dialect identifier, and Gostgrator does not infer one from the connection. An empty or unsupported value is rejected; a supported value is not checked against the actual database when constructing the instance.
+Set `Config.Driver` explicitly to match the database behind `db`.
+Go's `database/sql` API does not expose a standard SQL dialect identifier, and Gostgrator does not infer one from the connection.
+An empty or unsupported value is rejected; a supported value is not checked against the actual database when constructing the instance.
 
 #### Other drivers and custom dialects
 
-You can supply a `*sql.DB` opened by another compatible PostgreSQL or SQLite driver while keeping `Config.Driver` set to `"pg"` or `"sqlite"`. The driver's registered name does not need to match this setting, but it must support the SQL and execution behavior your migrations require.
+You can supply a `*sql.DB` opened by another compatible PostgreSQL or SQLite driver while keeping `Config.Driver` set to `"pg"` or `"sqlite"`.
+The driver's registered name does not need to match this setting, but it must support the SQL and execution behavior your migrations require.
 
-To use a custom dialect or wrap database operations, implement the exported `Client` interface and pass it to `NewGostgratorWithClient`. The client handles SQL execution and migration tracking-table operations; Gostgrator still handles loading migrations, ordering, checksum validation, and orchestration. You can also wrap an existing built-in client rather than implementing every operation yourself.
+
+To use a custom dialect or wrap database operations, implement the exported `Client` interface and pass it to `NewGostgratorWithClient`.
+The client handles SQL execution and migration tracking-table operations; Gostgrator still handles loading migrations, ordering, checksum validation, and orchestration.
+You can also wrap an existing built-in client rather than implementing every operation yourself.
 
 Given an initialized `customClient` implementing `gostgrator.Client`, construct the migrator as follows:
 
@@ -181,20 +190,33 @@ if err != nil {
 _, err = g.Migrate(ctx, "max")
 ```
 
-This constructor also supports `FSMigrations` and the legacy `MigrationPattern`. It uses the same migration configuration validation and defaults as `NewGostgrator`, but it does not select or configure a database client. `Config.Driver`, `Config.Conn`, and `Config.SchemaTable` do not configure or override the supplied client: configure its database and tracking table yourself before passing it in. No supported `Config.Driver` value is required. Nil clients, including typed nil implementations, are rejected.
+This constructor also supports `FSMigrations` and the legacy `MigrationPattern`.
+It uses the same migration configuration validation and defaults as `NewGostgrator`, but it does not select or configure a database client.
+`Config.Driver`, `Config.Conn`, and `Config.SchemaTable` do not configure or override the supplied client: configure its database and tracking table yourself before passing it in.
+No supported `Config.Driver` value is required.
+Nil clients, including typed nil implementations, are rejected.
 
-Your application owns the client's database resources and remains responsible for closing them. The `Client` interface uses `*sql.Rows` and `sql.Result`, so it remains tied to `database/sql` rather than supporting arbitrary database APIs. A custom dialect must implement the required bookkeeping operations, and your migration SQL must still be compatible with its database.
+Your application owns the client's database resources and remains responsible for closing them.
+The `Client` interface uses `*sql.Rows` and `sql.Result`, so it remains tied to `database/sql` rather than supporting arbitrary database APIs.
+A custom dialect must implement the required bookkeeping operations, and your migration SQL must still be compatible with its database.
+
 
 ### Choose where migrations are loaded from
 
 Set `Config.Migrations` to one of two options:
 
-- **`DiskMigrations`** reads SQL files from disk when migrations run. Use this when you deploy a migrations directory alongside your application.
-- **`FSMigrations`** reads SQL files from a Go filesystem supplied in its `FS` field. Use this with `embed.FS` to package migrations inside your executable, without needing a migrations directory at runtime. See [Embed migrations in a binary](#embed-migrations-in-a-binary) below.
+- **`DiskMigrations`** reads SQL files from disk when migrations run.
+  Use this when you deploy a migrations directory alongside your application.
+- **`FSMigrations`** reads SQL files from a Go filesystem supplied in its `FS` field.
+  Use this with `embed.FS` to package migrations inside your executable, without needing a migrations directory at runtime.
+  See [Embed migrations in a binary](#embed-migrations-in-a-binary) below.
 
-Both options have a `Pattern` field that selects which files to load. For example, `migrations/*.sql` selects SQL files directly inside the `migrations` directory. Name the files using the [migration naming convention](#migrations), such as `001.do.create-users.sql` and `001.undo.create-users.sql`.
+Both options have a `Pattern` field that selects which files to load.
+For example, `migrations/*.sql` selects SQL files directly inside the `migrations` directory.
+Name the files using the [migration naming convention](#migrations), such as `001.do.create-users.sql` and `001.undo.create-users.sql`.
 
-To load migrations from disk, use the following configuration. This example assumes `db` is an initialized SQLite `*sql.DB` and `ctx` is a `context.Context`:
+To load migrations from disk, use the following configuration.
+This example assumes `db` is an initialized SQLite `*sql.DB` and `ctx` is a `context.Context`:
 
 ```go
 cfg := gostgrator.Config{
@@ -210,19 +232,28 @@ if err != nil {
 _, err = g.Migrate(ctx, "max")
 ```
 
-`Migrate(ctx, "max")` applies pending migrations up to the highest available version. For disk migrations, relative paths are resolved from the application's working directory; absolute paths are also supported.
+`Migrate(ctx, "max")` applies pending migrations up to the highest available version.
+For disk migrations, relative paths are resolved from the application's working directory; absolute paths are also supported.
 
 #### Filesystem paths and configuration
 
-`FSMigrations` accepts an [`fs.FS`](https://pkg.go.dev/io/fs#FS), Go's standard read-only filesystem interface. Implementations include [`embed.FS`](https://pkg.go.dev/embed#FS) for files compiled into your binary, [`os.DirFS`](https://pkg.go.dev/os#DirFS) for a directory on disk, and [`fstest.MapFS`](https://pkg.go.dev/testing/fstest#MapFS) for in-memory test files.
+`FSMigrations` accepts an [`fs.FS`](https://pkg.go.dev/io/fs#FS), Go's standard read-only filesystem interface.
+Implementations include [`embed.FS`](https://pkg.go.dev/embed#FS) for files compiled into your binary, [`os.DirFS`](https://pkg.go.dev/os#DirFS) for a directory on disk, and [`fstest.MapFS`](https://pkg.go.dev/testing/fstest#MapFS) for in-memory test files.
 
-Unlike disk paths, `FSMigrations.Pattern` is relative to the supplied filesystem's root and uses forward slashes, with no leading slash or `.` or `..` path components. Use `migrations/*.sql`, not `./migrations/*.sql`. To make the migrations directory itself the root, use [`fs.Sub`](https://pkg.go.dev/io/fs#Sub) and then select files with `*.sql`.
+Unlike disk paths, `FSMigrations.Pattern` is relative to the supplied filesystem's root and uses forward slashes, with no leading slash or `.` or `..` path components.
+Use `migrations/*.sql`, not `./migrations/*.sql`.
+To make the migrations directory itself the root, use [`fs.Sub`](https://pkg.go.dev/io/fs#Sub) and then select files with `*.sql`.
 
-Patterns follow [`filepath.Glob`](https://pkg.go.dev/path/filepath#Glob) for `DiskMigrations` and [`fs.Glob`](https://pkg.go.dev/io/fs#Glob) for `FSMigrations`. Neither treats `**` as a recursive wildcard. Both options require a nonempty pattern, and `FSMigrations` also requires a nonnil filesystem. `Config.Migrations` accepts either an option value or a nonnil pointer to one; its interface type is `MigrationSource`.
+Patterns follow [`filepath.Glob`](https://pkg.go.dev/path/filepath#Glob) for `DiskMigrations` and [`fs.Glob`](https://pkg.go.dev/io/fs#Glob) for `FSMigrations`.
+Neither treats `**` as a recursive wildcard.
+Both options require a nonempty pattern, and `FSMigrations` also requires a nonnil filesystem.
+`Config.Migrations` accepts either an option value or a nonnil pointer to one; its interface type is `MigrationSource`.
 
 #### Existing configurations and CLI usage
 
-If you already use `Config.MigrationPattern`, you can keep using it to load migrations from disk. Set either `Migrations` or `MigrationPattern`, not both. The CLI continues to select disk files with `-migration-pattern`; `Config.Migrations` is for applications using the Go library.
+If you already use `Config.MigrationPattern`, you can keep using it to load migrations from disk.
+Set either `Migrations` or `MigrationPattern`, not both.
+The CLI continues to select disk files with `-migration-pattern`; `Config.Migrations` is for applications using the Go library.
 
 ### Embed migrations in a binary
 
@@ -260,13 +291,20 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 }
 ```
 
-The example expects a SQLite connection opened with `sql.Open("sqlite", ...)`. Embedded SQL is built into the binary and does not require migration files in the runtime working directory. Changing embedded migrations requires rebuilding the binary.
+The example expects a SQLite connection opened with `sql.Open("sqlite", ...)`.
+Embedded SQL is built into the binary and does not require migration files in the runtime working directory.
+Changing embedded migrations requires rebuilding the binary.
 
-The directory directive embeds eligible files recursively, but `migrations/*.sql` only selects migrations directly inside that directory. Directory embedding excludes dotfiles and underscore-prefixed files by default; use `//go:embed all:migrations` if those are needed. Embedding paths are relative to the package containing the directive and cannot escape it using `..`.
+The directory directive embeds eligible files recursively, but `migrations/*.sql` only selects migrations directly inside that directory.
+Directory embedding excludes dotfiles and underscore-prefixed files by default; use `//go:embed all:migrations` if those are needed.
+Embedding paths are relative to the package containing the directive and cannot escape it using `..`.
 
-Use `g.Migrate(ctx, "0")` to apply the undo migrations back to version zero, or `g.Down(ctx, 1)` to roll back one version step. File naming, migration ordering, duplicate version/action detection, and checksum validation work the same way for disk and filesystem sources. `Config.Newline` normalizes content for checksum calculation without rewriting the SQL executed against the database.
+Use `g.Migrate(ctx, "0")` to apply the undo migrations back to version zero, or `g.Down(ctx, 1)` to roll back one version step.
+File naming, migration ordering, duplicate version/action detection, and checksum validation work the same way for disk and filesystem sources.
+`Config.Newline` normalizes content for checksum calculation without rewriting the SQL executed against the database.
 
-Migrations returned by `GetMigrations` retain their source for later `RunMigrations` calls, even when passed to a different runner. A manually constructed `Migration` without a retained source reads its `Filename` from disk.
+Migrations returned by `GetMigrations` retain their source for later `RunMigrations` calls, even when passed to a different runner.
+A manually constructed `Migration` without a retained source reads its `Filename` from disk.
 
 ### Create migration files
 
@@ -278,9 +316,11 @@ err := gostgrator.CreateMigration(gostgrator.Config{
 }, "Add users", "int")
 ```
 
-The migration directory must already exist. Use `"timestamp"` instead of `"int"` for Unix timestamp numbering.
+The migration directory must already exist.
+Use `"timestamp"` instead of `"int"` for Unix timestamp numbering.
 
-`CreateMigration` rejects `FSMigrations`, including filesystems backed by disk, because the `fs.FS` interface is read-only. Create files through a disk source during development, then rebuild the binary to update embedded migrations.
+`CreateMigration` rejects `FSMigrations`, including filesystems backed by disk, because the `fs.FS` interface is read-only.
+Create files through a disk source during development, then rebuild the binary to update embedded migrations.
 
 ---
 
