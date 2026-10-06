@@ -172,7 +172,7 @@ You can supply a `*sql.DB` opened by another compatible PostgreSQL or SQLite dri
 The driver's registered name does not need to match this setting, but it must support the SQL and execution behavior your migrations require.
 
 
-To use a custom dialect or wrap database operations, implement the exported `Client` interface and pass it to `NewGostgratorWithClient`.
+To use a custom dialect or wrap database operations, implement the exported [`Client`](https://pkg.go.dev/github.com/bcomnes/gostgrator#Client) interface and pass it to `NewGostgratorWithClient`.
 The client handles SQL execution and migration tracking-table operations; Gostgrator still handles loading migrations, ordering, checksum validation, and orchestration.
 You can also wrap an existing built-in client rather than implementing every operation yourself.
 
