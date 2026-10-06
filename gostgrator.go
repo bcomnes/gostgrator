@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 )
@@ -11,8 +12,10 @@ import (
 // Config holds settings for migrations.
 type Config struct {
 	// Driver selects the SQL dialect: "pg", "sqlite", or the legacy alias "sqlite3".
+	// It is unused by NewGostgratorWithClient.
 	Driver string `json:"driver,omitempty"`
-	// SchemaTable is the name of the migration table.
+	// SchemaTable is the name of the migration table for built-in clients.
+	// NewGostgratorWithClient leaves table configuration to the supplied client.
 	SchemaTable string `json:"schemaTable,omitempty"`
 	// Migrations selects an explicit disk or filesystem migration source.
 	// It must not be combined with MigrationPattern.
@@ -24,7 +27,8 @@ type Config struct {
 	Newline string `json:"newline,omitempty"`
 	// ValidateChecksums indicates if the tool should validate migration checksums.
 	ValidateChecksums bool `json:"validateChecksums,omitempty"`
-	// The connection strig to use
+	// Conn is the connection string used by the CLI.
+	// Neither constructor opens a connection or uses this field.
 	Conn string `json:"conn,omitempty"`
 }
 
@@ -45,16 +49,11 @@ type Gostgrator struct {
 }
 
 // NewGostgrator creates a new Gostgrator instance with the provided configuration and database connection.
+// Config.Driver selects the built-in client. The caller owns the database connection.
 func NewGostgrator(cfg Config, db *sql.DB) (*Gostgrator, error) {
-	if _, _, err := migrationSource(cfg); err != nil {
+	cfg, err := normalizeConfig(cfg)
+	if err != nil {
 		return nil, err
-	}
-	// Merge defaults.
-	if cfg.SchemaTable == "" {
-		cfg.SchemaTable = DefaultConfig.SchemaTable
-	}
-	if !cfg.ValidateChecksums {
-		cfg.ValidateChecksums = DefaultConfig.ValidateChecksums
 	}
 	client, err := NewClient(cfg, db)
 	if err != nil {
@@ -64,6 +63,43 @@ func NewGostgrator(cfg Config, db *sql.DB) (*Gostgrator, error) {
 		cfg:    cfg,
 		client: client,
 	}, nil
+}
+
+// NewGostgratorWithClient creates a Gostgrator using a caller-provided Client.
+// The client owns SQL execution and migration tracking-table behavior; the caller
+// is responsible for configuring it and managing its database resources.
+// Config.Driver, Config.Conn, and Config.SchemaTable do not configure or override
+// the supplied client. Migration settings and defaults apply as in NewGostgrator.
+// A nil client, including a typed nil implementation, is rejected.
+func NewGostgratorWithClient(cfg Config, client Client) (*Gostgrator, error) {
+	if client == nil {
+		return nil, fmt.Errorf("migration client must not be nil")
+	}
+	value := reflect.ValueOf(client)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		if value.IsNil() {
+			return nil, fmt.Errorf("migration client must not be nil")
+		}
+	}
+	cfg, err := normalizeConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &Gostgrator{cfg: cfg, client: client}, nil
+}
+
+func normalizeConfig(cfg Config) (Config, error) {
+	if _, _, err := migrationSource(cfg); err != nil {
+		return Config{}, err
+	}
+	if cfg.SchemaTable == "" {
+		cfg.SchemaTable = DefaultConfig.SchemaTable
+	}
+	if !cfg.ValidateChecksums {
+		cfg.ValidateChecksums = DefaultConfig.ValidateChecksums
+	}
+	return cfg, nil
 }
 
 func (g *Gostgrator) GetMigrations() ([]Migration, error) {

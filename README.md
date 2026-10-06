@@ -165,7 +165,25 @@ Set `Config.Driver` explicitly to match the database behind `db`. Go's `database
 
 You can supply a `*sql.DB` opened by another compatible PostgreSQL or SQLite driver while keeping `Config.Driver` set to `"pg"` or `"sqlite"`. The driver's registered name does not need to match this setting, but it must support the SQL and execution behavior your migrations require.
 
-There is currently no public escape hatch for supplying a custom dialect or replacing the migration client. Although the `Client` interface is exported, `NewGostgrator` constructs a built-in client internally and does not accept a caller-provided implementation. Supporting another database dialect requires a library change; passing its `*sql.DB` alone is not sufficient.
+To use a custom dialect or wrap database operations, implement the exported `Client` interface and pass it to `NewGostgratorWithClient`. The client handles SQL execution and migration tracking-table operations; Gostgrator still handles loading migrations, ordering, checksum validation, and orchestration. You can also wrap an existing built-in client rather than implementing every operation yourself.
+
+Given an initialized `customClient` implementing `gostgrator.Client`, construct the migrator as follows:
+
+```go
+g, err := gostgrator.NewGostgratorWithClient(gostgrator.Config{
+    Migrations: gostgrator.DiskMigrations{
+        Pattern: "migrations/*.sql",
+    },
+}, customClient)
+if err != nil {
+    return err
+}
+_, err = g.Migrate(ctx, "max")
+```
+
+This constructor also supports `FSMigrations` and the legacy `MigrationPattern`. It uses the same migration configuration validation and defaults as `NewGostgrator`, but it does not select or configure a database client. `Config.Driver`, `Config.Conn`, and `Config.SchemaTable` do not configure or override the supplied client: configure its database and tracking table yourself before passing it in. No supported `Config.Driver` value is required. Nil clients, including typed nil implementations, are rejected.
+
+Your application owns the client's database resources and remains responsible for closing them. The `Client` interface uses `*sql.Rows` and `sql.Result`, so it remains tied to `database/sql` rather than supporting arbitrary database APIs. A custom dialect must implement the required bookkeeping operations, and your migration SQL must still be compatible with its database.
 
 ### Choose where migrations are loaded from
 
