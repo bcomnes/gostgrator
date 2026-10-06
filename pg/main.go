@@ -174,14 +174,9 @@ func main() {
 			os.Exit(1)
 		}
 		description := args[1]
-		// Initialize gostgrator with a nil database.
-		g, err := gostgrator.NewGostgrator(cliConfig, nil)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error initializing gostgrator: %v\n", err)
-			os.Exit(1)
-		}
+
 		fmt.Printf("[%s] Creating new migration with description '%s' in %s mode...\n", time.Now().Format(time.Kitchen), description, *mode)
-		if err := g.CreateMigration(description, *mode); err != nil {
+		if err := gostgrator.CreateMigration(cliConfig, description, *mode); err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating new migration: %v\n", err)
 			os.Exit(1)
 		}
@@ -244,7 +239,14 @@ func withDB(cliConfig gostgrator.Config, flagConn string, f func(g *gostgrator.G
 	}
 	defer db.Close()
 
-	g, err := gostgrator.NewGostgrator(cliConfig, db)
+	client, err := gostgrator.NewClient(cliConfig, db)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing migration client: %v\n", err)
+		os.Exit(1)
+	}
+	cliConfig.Migrations = gostgrator.DiskMigrations{Pattern: cliConfig.MigrationPattern}
+	cliConfig.MigrationPattern = ""
+	g, err := gostgrator.NewGostgrator(cliConfig, client)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing gostgrator: %v\n", err)
 		os.Exit(1)

@@ -10,8 +10,14 @@ type Sqlite3Client struct {
 	baseClient
 }
 
-// NewSqlite3Client creates a new Sqlite3Client.
+// NewSqlite3Client creates a SQLite client using the supplied database.
+// SchemaTable defaults to DefaultConfig.SchemaTable. The constructor selects the
+// SQLite dialect regardless of Config.Driver; the caller owns db.
 func NewSqlite3Client(cfg Config, db *sql.DB) Client {
+	cfg.Driver = "sqlite"
+	if cfg.SchemaTable == "" {
+		cfg.SchemaTable = DefaultConfig.SchemaTable
+	}
 	sqliteClient := &Sqlite3Client{
 		baseClient: baseClient{
 			cfg: cfg,

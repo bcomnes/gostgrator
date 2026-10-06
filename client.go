@@ -29,7 +29,10 @@ func isSQLiteDriver(driver string) bool {
 	}
 }
 
-// Client defines the interface for migration clients.
+// Client defines SQL execution and database-specific migration bookkeeping.
+// Implementations can be supplied to NewGostgrator to support custom
+// dialects or wrap an existing client. The client is responsible for its tracking
+// table configuration; Gostgrator does not configure or close an injected client.
 type Client interface {
 	QueryContext(ctx context.Context, query string) (*sql.Rows, error)
 	ExecContext(ctx context.Context, script string) (sql.Result, error)

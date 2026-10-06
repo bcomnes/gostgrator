@@ -10,16 +10,24 @@ import (
 	"time"
 )
 
-// CreateMigration creates a new pair of migration files (do/undo).
+// CreateMigration creates a new pair of migration files (do/undo) on disk.
+// It accepts DiskMigrations or legacy MigrationPattern and rejects FSMigrations.
 // description: a human-readable description that will be kebab-cased for the filename.
 // mode: "int" for integer increment (default) or "timestamp" to use the Unix timestamp.
 func CreateMigration(cfg Config, description string, mode string) error {
+	filesystem, pattern, err := migrationSource(cfg)
+	if err != nil {
+		return err
+	}
+	if filesystem != nil {
+		return fmt.Errorf("cannot create migrations in an FSMigrations source; use DiskMigrations")
+	}
 	// Determine the migration folder from the migration pattern.
-	migFolder := filepath.Dir(cfg.MigrationPattern)
+	migFolder := filepath.Dir(pattern)
 
 	// Get the next migration number as a string.
 	var nextNumber string
-	files, err := filepath.Glob(cfg.MigrationPattern)
+	files, err := filepath.Glob(pattern)
 	if err != nil {
 		return fmt.Errorf("failed to scan migration files: %w", err)
 	}

@@ -18,6 +18,7 @@
 //	import (
 //	    "context"
 //	    "database/sql"
+//	    "os"
 //
 //	    _ "github.com/jackc/pgx/v5/stdlib" // or modernc.org/sqlite
 //	    "github.com/bcomnes/gostgrator"
@@ -25,12 +26,12 @@
 //
 //	func main() {
 //	    db, _ := sql.Open("pgx", os.Getenv("DATABASE_URL"))
+//	    client := gostgrator.NewPostgresClient(gostgrator.Config{}, db)
 //	    cfg := gostgrator.Config{
-//	        Driver:           "pg",
-//	        MigrationPattern: "migrations/*.sql",
+//	        Migrations: gostgrator.DiskMigrations{Pattern: "migrations/*.sql"},
 //	    }
 //
-//	    g, _ := gostgrator.NewGostgrator(cfg, db)
+//	    g, _ := gostgrator.NewGostgrator(cfg, client)
 //	    g.Migrate(context.Background(), "max")
 //	}
 //
@@ -38,13 +39,16 @@
 //
 // Use Config to tweak behaviour:
 //
-//   - Driver            — SQL dialect ("pg" or "sqlite"; "sqlite3" remains an alias)
-//   - SchemaTable       — table that stores migration state (default "schemaversion")
-//   - MigrationPattern  — glob for locating migration files
-//   - Newline           — line-ending style when scaffolding new migrations
+//   - SchemaTable       — pass to the client constructor (default "schemaversion")
+//   - Migrations        — DiskMigrations or FSMigrations for locating migration files
+//   - Newline           — line-ending normalization for migration checksums
 //   - ValidateChecksums — compare MD5 hashes before running *up* migrations
 //
-// You can merge Config with your own JSON/YAML file or set it inline.
+// NewGostgrator accepts a Client, not a database connection.
+// NewPostgresClient and NewSqlite3Client select their dialect and apply client
+// defaults. NewClient offers configuration-driven selection using Config.Driver.
+// The CLI retains JSON configuration and translates MigrationPattern to a disk
+// source; NewGostgrator rejects the legacy MigrationPattern field.
 //
 // # Migration files
 //
@@ -58,7 +62,7 @@
 //
 // # Programmatic API
 //
-//	NewGostgrator(cfg, db)        → *Gostgrator
+//	NewGostgrator(cfg, client)   → *Gostgrator, error
 //	(*Gostgrator).Migrate(ctx, v) → []Migration, error
 //	(*Gostgrator).Down(ctx, n)    → []Migration, error
 //	(*Gostgrator).GetMigrations() → []Migration, error

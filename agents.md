@@ -1,6 +1,7 @@
 # Agent Guidelines
 
-- Write Markdown prose with one sentence per line. Use one newline between sentences to keep them in the same paragraph; two newlines create a new paragraph.
+- In `.md` files, write Markdown prose with one sentence per line. Use a single newline between sentences within a paragraph and a blank line between paragraphs.
+- In GitHub issue, pull request, and discussion descriptions or comments, keep each prose paragraph on one continuous line. Do not insert newlines between sentences in the same paragraph; GitHub renders them as visible line breaks. Use blank lines only to separate paragraphs, and preserve line breaks required by lists and code blocks.
 - Format changed Go files with `gofmt` before finishing.
 - Prefer the Go standard library unless a dependency clearly improves the implementation.
 - Run `go mod tidy` only when adding, removing, or changing module dependencies.
