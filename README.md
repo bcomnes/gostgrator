@@ -146,9 +146,28 @@ gostgrator-pg list
 
 Full API docs live on [PkgGoDev][pkg-go-dev-url].
 
-### Choose where migrations are loaded from
+### Database connections and SQL dialects
 
-To run migrations from your Go application, pass a configuration and an initialized `*sql.DB` to `gostgrator.NewGostgrator`. You can reuse your application's existing database connection. Set `Config.Driver` to `"sqlite"` or `"pg"` to match the database; Gostgrator uses this to select the SQL dialect for tracking applied migrations.
+To run migrations from your Go application, pass a configuration and an initialized [`*sql.DB`](https://pkg.go.dev/database/sql#DB) to `gostgrator.NewGostgrator`. You can reuse your application's existing database connection; your application remains responsible for opening and closing it.
+
+`Config.Driver` selects Gostgrator's SQL dialect, not the Go driver used to open the connection:
+
+| Database | `Config.Driver` | Example driver name passed to `sql.Open` |
+| --- | --- | --- |
+| PostgreSQL | `"pg"` | `"pgx"` |
+| SQLite | `"sqlite"` (or the legacy alias `"sqlite3"`) | `"sqlite"` with modernc SQLite |
+
+Gostgrator uses the dialect to inspect, create, and update its migration tracking table (`schemaversion` by default, configurable through `Config.SchemaTable`). It executes the SQL in your migration files as supplied; it does not translate that SQL between databases. Write migrations for the database you are using.
+
+Set `Config.Driver` explicitly to match the database behind `db`. Go's `database/sql` API does not expose a standard SQL dialect identifier, and Gostgrator does not infer one from the connection. An empty or unsupported value is rejected; a supported value is not checked against the actual database when constructing the instance.
+
+#### Other drivers and custom dialects
+
+You can supply a `*sql.DB` opened by another compatible PostgreSQL or SQLite driver while keeping `Config.Driver` set to `"pg"` or `"sqlite"`. The driver's registered name does not need to match this setting, but it must support the SQL and execution behavior your migrations require.
+
+There is currently no public escape hatch for supplying a custom dialect or replacing the migration client. Although the `Client` interface is exported, `NewGostgrator` constructs a built-in client internally and does not accept a caller-provided implementation. Supporting another database dialect requires a library change; passing its `*sql.DB` alone is not sufficient.
+
+### Choose where migrations are loaded from
 
 Set `Config.Migrations` to one of two options:
 
