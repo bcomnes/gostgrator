@@ -209,6 +209,44 @@ func TestMigrationSourceReadErrors(t *testing.T) {
 	}
 }
 
+func TestMigrationSourceComparability(t *testing.T) {
+	configs := map[string]Config{
+		"MapFS": {Migrations: FSMigrations{
+			FS: fstest.MapFS{"001.do.sql": {Data: []byte("SELECT 1;")}}, Pattern: "*.sql",
+		}},
+		"embed": {Migrations: FSMigrations{FS: sourceFixtureFS(t), Pattern: "*.sql"}},
+		"disk":  {Migrations: DiskMigrations{Pattern: "testdata/source_sqlite/*.sql"}},
+	}
+	for name, cfg := range configs {
+		t.Run(name, func(t *testing.T) {
+			migs, err := getMigrations(cfg)
+			if err != nil || len(migs) == 0 {
+				t.Fatalf("getMigrations = %v, %v", migs, err)
+			}
+			original := migs[0]
+			copied := original
+			t.Run("equality", func(t *testing.T) {
+				if copied != original {
+					t.Fatal("a copied migration must compare equal")
+				}
+			})
+			t.Run("map key", func(t *testing.T) {
+				seen := map[Migration]bool{original: true}
+				if !seen[copied] {
+					t.Fatal("could not look up a copied migration")
+				}
+			})
+			want, err := original.getSQL()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, err := copied.getSQL(); err != nil || got != want {
+				t.Fatalf("copied migration SQL = %q, %v; want %q", got, err, want)
+			}
+		})
+	}
+}
+
 func TestMigrationSourceManualMigrationUsesDisk(t *testing.T) {
 	filename := filepath.Join(t.TempDir(), "001.do.sql")
 	const content = "SELECT 42;\n"
