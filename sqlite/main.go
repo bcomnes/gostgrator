@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bcomnes/gostgrator"
-	_ "modernc.org/sqlite" // SQLite driver
+	"github.com/bcomnes/gostgrator/v2"
+	_ "modernc.org/sqlite"	// SQLite driver
 )
 
 var versionString = gostgrator.Version

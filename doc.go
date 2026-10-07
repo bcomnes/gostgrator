@@ -11,7 +11,7 @@
 //
 // # Install
 //
-//	go get github.com/bcomnes/gostgrator@latest
+//	go get github.com/bcomnes/gostgrator/v2@latest
 //
 // # Quick start
 //
@@ -21,7 +21,7 @@
 //	    "os"
 //
 //	    _ "github.com/jackc/pgx/v5/stdlib" // or modernc.org/sqlite
-//	    "github.com/bcomnes/gostgrator"
+//	    "github.com/bcomnes/gostgrator/v2"
 //	)
 //
 //	func main() {
@@ -74,8 +74,8 @@
 //
 // If you prefer shell commands, install driver-specific binaries:
 //
-//	go get -tool github.com/bcomnes/gostgrator/pg@latest      # PostgreSQL
-//	go get -tool github.com/bcomnes/gostgrator/sqlite@latest  # SQLite
+//	go get -tool github.com/bcomnes/gostgrator/v2/pg@latest      # PostgreSQL
+//	go get -tool github.com/bcomnes/gostgrator/v2/sqlite@latest  # SQLite
 //
 // See each sub-package’s doc for flags and usage.
 //

@@ -7,8 +7,8 @@
 
 [action-img]: https://github.com/bcomnes/gostgrator/actions/workflows/test.yml/badge.svg
 [action-url]: https://github.com/bcomnes/gostgrator/actions/workflows/test.yml
-[pkg-go-dev-img]: https://pkg.go.dev/badge/github.com/bcomnes/gostgrator
-[pkg-go-dev-url]: https://pkg.go.dev/github.com/bcomnes/gostgrator
+[pkg-go-dev-img]: https://pkg.go.dev/badge/github.com/bcomnes/gostgrator/v2
+[pkg-go-dev-url]: https://pkg.go.dev/github.com/bcomnes/gostgrator/v2
 [socket-image]: https://socket.dev/api/badge/go/package/github.com/bcomnes/gostgrator?version=v1.0.2
 [socket-url]: https://socket.dev/go/package/github.com/bcomnes/gostgrator?version=v1.0.2
 
@@ -64,8 +64,8 @@ Each supported database has it's own CLI you can install.
 The `gostgrator/pg` cli provides migration support for [Postgres](https://www.postgresql.org).
 
 ```console
-go get -tool github.com/bcomnes/gostgrator/pg
-go tool github.com/bcomnes/gostgrator/pg -help
+go get -tool github.com/bcomnes/gostgrator/v2/pg
+go tool github.com/bcomnes/gostgrator/v2/pg -help
 Usage:
   gostgrator-pg [command] [arguments] [options]
 
@@ -96,8 +96,8 @@ Options:
 ### gostgrator/sqlite
 
 ```console
-go get -tool github.com/bcomnes/gostgrator/sqlite
-go tool github.com/bcomnes/gostgrator/sqlite -help
+go get -tool github.com/bcomnes/gostgrator/v2/sqlite
+go tool github.com/bcomnes/gostgrator/v2/sqlite -help
 Usage:
   gostgrator-sqlite [command] [arguments] [options]
 
@@ -129,13 +129,13 @@ Options:
 
 ```console
 # migrate to latest in ./migrations using DATABASE_URL
-go tool github.com/bcomnes/gostgrator/pg migrate
+go tool github.com/bcomnes/gostgrator/v2/pg migrate
 
 # rollback the last two migrations
-go tool github.com/bcomnes/gostgrator/pg down 2
+go tool github.com/bcomnes/gostgrator/v2/pg down 2
 
 # create a timestamp‑based pair
-go tool github.com/bcomnes/gostgrator/pg -mode timestamp new "add-users-table"
+go tool github.com/bcomnes/gostgrator/v2/pg -mode timestamp new "add-users-table"
 
 # list all migrations and mark current
 gostgrator-pg list
@@ -244,7 +244,7 @@ import (
     "database/sql"
     "embed"
 
-    "github.com/bcomnes/gostgrator"
+    "github.com/bcomnes/gostgrator/v2"
     _ "modernc.org/sqlite"
 )
 
@@ -296,7 +296,7 @@ For embedded migrations, edit these files and rebuild.
 
 ### Advanced: custom clients and dialects
 
-Use a custom [`Client`](https://pkg.go.dev/github.com/bcomnes/gostgrator#Client) only when you need an escape hatch for another dialect or custom database behavior.
+Use a custom [`Client`](https://pkg.go.dev/github.com/bcomnes/gostgrator/v2#Client) only when you need an escape hatch for another dialect or custom database behavior.
 Switching to a compatible PostgreSQL or SQLite driver does not require one.
 
 This wrapper adds execution logging to the built-in SQLite client:
@@ -309,7 +309,7 @@ import (
     "database/sql"
     "log"
 
-    "github.com/bcomnes/gostgrator"
+    "github.com/bcomnes/gostgrator/v2"
 )
 
 type loggingClient struct {
@@ -348,7 +348,7 @@ func Migrate(ctx context.Context, db *sql.DB, logger *log.Logger) error {
 Pass a SQLite `*sql.DB` and a nonnil logger such as `log.Default()`.
 The wrapper logs migration and bookkeeping executions, not SQL text, queries, or calls made internally by the wrapped client's `EnsureTable`.
 
-For a new dialect, implement all [`Client`](https://pkg.go.dev/github.com/bcomnes/gostgrator#Client) methods: SQL execution, tracking-table management, version/checksum queries, and action persistence.
+For a new dialect, implement all [`Client`](https://pkg.go.dev/github.com/bcomnes/gostgrator/v2#Client) methods: SQL execution, tracking-table management, version/checksum queries, and action persistence.
 The interface uses `*sql.Rows` and `sql.Result`, so implementations remain tied to `database/sql`.
 
 Configure and manage the client's resources yourself; `NewGostgrator` does not override them with `Config.Driver`, `Conn`, or `SchemaTable`.
@@ -361,7 +361,7 @@ Nil clients, including typed nil implementations, are rejected.
 * **CLI ‑ first** – instant productivity; no boilerplate code required.
 * **Typed Go API** – run migrations directly from your Go application.
 * **Embedded migrations** – ship SQL files inside your binary with `go:embed`; no runtime migrations directory needed.
-* **Custom adapter clients** – implement the [`Client`](https://pkg.go.dev/github.com/bcomnes/gostgrator#Client) interface to support another SQL dialect or wrap database operations.
+* **Custom adapter clients** – implement the [`Client`](https://pkg.go.dev/github.com/bcomnes/gostgrator/v2#Client) interface to support another SQL dialect or wrap database operations.
 * **Checksum validation** – MD5 guardrails ensure applied migrations never drift.
 * **Up ⬆ / Down ⬇ parity** – every migration pair keeps rollbacks honest.
 * **Zero dependencies** – a single static binary per database driver.

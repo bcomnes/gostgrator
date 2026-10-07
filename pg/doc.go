@@ -5,7 +5,7 @@
 //
 // # Install
 //
-//	go install github.com/bcomnes/gostgrator/pg@latest
+//	go install github.com/bcomnes/gostgrator/v2/pg@latest
 //
 // # Synopsis
 //

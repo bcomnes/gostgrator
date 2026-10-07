@@ -5,7 +5,7 @@
 //
 // # Install
 //
-//	go install github.com/bcomnes/gostgrator/sqlite@latest
+//	go install github.com/bcomnes/gostgrator/v2/sqlite@latest
 //
 // # Synopsis
 //

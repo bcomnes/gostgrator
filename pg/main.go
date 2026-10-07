@@ -17,9 +17,9 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver
+	_ "github.com/jackc/pgx/v5/stdlib"	// PostgreSQL driver
 
-	"github.com/bcomnes/gostgrator"
+	"github.com/bcomnes/gostgrator/v2"
 )
 
 var versionString = gostgrator.Version

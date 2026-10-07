@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bcomnes/gostgrator"
+	"github.com/bcomnes/gostgrator/v2"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"
 )
@@ -56,10 +56,10 @@ func TestMain(m *testing.M) {
 
 	// Set up global Postgres config.
 	pgTestConfig = gostgrator.Config{
-		Driver:            "pg",
-		Migrations:        gostgrator.DiskMigrations{Pattern: "testdata/migrations/*"},
-		SchemaTable:       "schemaversion",
-		ValidateChecksums: true,
+		Driver:			"pg",
+		Migrations:		gostgrator.DiskMigrations{Pattern: "testdata/migrations/*"},
+		SchemaTable:		"schemaversion",
+		ValidateChecksums:	true,
 	}
 
 	code := m.Run()
@@ -277,10 +277,10 @@ func TestSqliteMigrations(t *testing.T) {
 	defer db.Close()
 
 	cfg := gostgrator.Config{
-		Driver:            "sqlite",
-		Migrations:        gostgrator.DiskMigrations{Pattern: "testdata/migrations/*"},
-		SchemaTable:       "versions",
-		ValidateChecksums: true,
+		Driver:			"sqlite",
+		Migrations:		gostgrator.DiskMigrations{Pattern: "testdata/migrations/*"},
+		SchemaTable:		"versions",
+		ValidateChecksums:	true,
 	}
 
 	g, err := gostgrator.NewGostgrator(cfg, gostgrator.NewSqlite3Client(cfg, db))

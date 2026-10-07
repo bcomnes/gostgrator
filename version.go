@@ -1,5 +1,5 @@
 package gostgrator
 
 var (
-	Version = "1.0.9"
+	Version = "2.0.0"
 )

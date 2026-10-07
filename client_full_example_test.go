@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing/fstest"
 
-	"github.com/bcomnes/gostgrator"
+	"github.com/bcomnes/gostgrator/v2"
 	_ "modernc.org/sqlite"
 )
 
@@ -80,19 +80,19 @@ func ExampleClient() {
 	if err != nil {
 		panic(err)
 	}
-	defer db.Close() // The caller owns the connection, not Gostgrator.
+	defer db.Close()	// The caller owns the connection, not Gostgrator.
 	db.SetMaxOpenConns(1)
 
 	client := &sqliteClient{db: db}
 	g, err := gostgrator.NewGostgrator(gostgrator.Config{
 		Migrations: gostgrator.FSMigrations{
 			FS: fstest.MapFS{
-				"001.do.create-items.sql":   {Data: []byte("CREATE TABLE items (id INTEGER PRIMARY KEY);")},
-				"001.undo.create-items.sql": {Data: []byte("DROP TABLE items;")},
+				"001.do.create-items.sql":	{Data: []byte("CREATE TABLE items (id INTEGER PRIMARY KEY);")},
+				"001.undo.create-items.sql":	{Data: []byte("DROP TABLE items;")},
 			},
-			Pattern: "*.sql",
+			Pattern:	"*.sql",
 		},
-		ValidateChecksums: true,
+		ValidateChecksums:	true,
 	}, client)
 	if err != nil {
 		panic(err)
