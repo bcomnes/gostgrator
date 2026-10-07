@@ -44,11 +44,9 @@
 //   - Newline           — line-ending normalization for migration checksums
 //   - ValidateChecksums — compare MD5 hashes before running *up* migrations
 //
-// NewGostgrator accepts a Client, not a database connection.
+// NewGostgrator accepts a Client.
 // NewPostgresClient and NewSqlite3Client select their dialect and apply client
 // defaults. NewClient offers configuration-driven selection using Config.Driver.
-// The CLI retains JSON configuration and translates MigrationPattern to a disk
-// source; NewGostgrator rejects the legacy MigrationPattern field.
 //
 // # Migration files
 //
