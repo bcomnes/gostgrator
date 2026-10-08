@@ -319,8 +319,8 @@ type loggingClient struct {
 
 var _ gostgrator.Client = (*loggingClient)(nil)
 
-func (c *loggingClient) ExecContext(ctx context.Context, script string) (sql.Result, error) {
-    result, err := c.Client.ExecContext(ctx, script)
+func (c *loggingClient) ExecContext(ctx context.Context, script string, args ...any) (sql.Result, error) {
+    result, err := c.Client.ExecContext(ctx, script, args...)
     c.logger.Printf("SQL execution succeeded: %t", err == nil)
     return result, err
 }
@@ -350,6 +350,27 @@ The wrapper logs migration and bookkeeping executions, not SQL text, queries, or
 
 For a new dialect, implement all [`Client`](https://pkg.go.dev/github.com/bcomnes/gostgrator/v2#Client) methods: SQL execution, tracking-table management, version/checksum queries, and action persistence.
 The interface uses `*sql.Rows` and `sql.Result`, so implementations remain tied to `database/sql`.
+See the [complete client example](https://pkg.go.dev/github.com/bcomnes/gostgrator/v2#example-Client) for an implementation without wrapping a built-in client.
+
+#### Bookkeeping SQL and identifiers
+
+SQL builders return a [`Statement`](https://pkg.go.dev/github.com/bcomnes/gostgrator/v2#Statement) containing SQL and bound values:
+
+```go
+return gostgrator.Statement{
+    SQL:  `INSERT INTO "app_migrations" (version, name, md5) VALUES (?, ?, ?)`,
+    Args: []any{m.Version, m.Name, m.Md5},
+}
+```
+
+Use placeholders for values: `?` for SQLite, or `$1`, `$2`, and so on for PostgreSQL.
+Forward `args...` from `QueryContext` and `ExecContext` to the database driver.
+
+Parameters cannot substitute table names, schema names, or SQL syntax.
+Quote dynamic identifiers using the target dialect's rules instead of putting them in `Args`.
+The PostgreSQL client quotes each component of `SchemaTable` (`table` or `schema.table`); the SQLite client quotes the whole name, treating dots literally.
+Pass unquoted names to these constructors; they escape embedded double quotes.
+Migration scripts remain trusted executable SQL and run without bound arguments.
 
 Configure and manage the client's resources yourself; `NewGostgrator` does not override them with `Config.Driver`, `Conn`, or `SchemaTable`.
 Nil clients, including typed nil implementations, are rejected.

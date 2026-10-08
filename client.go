@@ -29,18 +29,27 @@ func isSQLiteDriver(driver string) bool {
 	}
 }
 
+// Statement contains SQL and its bound values. Placeholders are dialect-specific;
+// identifiers must be quoted by the client, not passed in Args.
+type Statement struct {
+	SQL  string
+	Args []any
+}
+
 // Client defines SQL execution and database-specific migration bookkeeping.
 // Implementations can be supplied to NewGostgrator to support custom
 // dialects or wrap an existing client. The client is responsible for its tracking
 // table configuration; Gostgrator does not configure or close an injected client.
+// SQL builders return statements with bound bookkeeping values. Execution methods
+// must forward args to the driver; migration scripts are executed without args.
 type Client interface {
-	QueryContext(ctx context.Context, query string) (*sql.Rows, error)
-	ExecContext(ctx context.Context, script string) (sql.Result, error)
-	GetDatabaseVersionSql() string
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	ExecContext(ctx context.Context, script string, args ...any) (sql.Result, error)
+	GetDatabaseVersionSql() Statement
 	HasVersionTable(ctx context.Context) (bool, error)
 	EnsureTable(ctx context.Context) error
-	GetMd5Sql(m Migration) string
-	PersistActionSql(m Migration) string
+	GetMd5Sql(m Migration) Statement
+	PersistActionSql(m Migration) Statement
 }
 
 // baseClient provides common functionality.
@@ -49,75 +58,77 @@ type baseClient struct {
 	db  *sql.DB
 
 	// Function pointers for driver-specific SQL generators.
-	getColumnsSqlFn  func() string
+	getColumnsSqlFn  func() Statement
 	getAddNameSqlFn  func() string
 	getAddMd5SqlFn   func() string
 	getAddRunAtSqlFn func() string
 }
 
-// quotedSchemaTable quotes the schemaTable if using PostgreSQL.
+// quotedSchemaTable applies the selected dialect's identifier rules.
 func (c *baseClient) quotedSchemaTable() string {
-	if strings.ToLower(c.cfg.Driver) == "pg" {
+	if c.cfg.Driver == "pg" {
 		parts := strings.Split(c.cfg.SchemaTable, ".")
 		for i, part := range parts {
-			parts[i] = fmt.Sprintf(`"%s"`, part)
+			parts[i] = quotePostgresIdentifier(part)
 		}
 		return strings.Join(parts, ".")
 	}
-	return c.cfg.SchemaTable
+	return quoteSQLiteIdentifier(c.cfg.SchemaTable)
+}
+
+func (c *baseClient) placeholder(position int) string {
+	if c.cfg.Driver == "pg" {
+		return fmt.Sprintf("$%d", position)
+	}
+	return "?"
 }
 
 // Exposes the QueryContext method from the configured db connection.
-func (c *baseClient) QueryContext(ctx context.Context, query string) (*sql.Rows, error) {
-	return c.db.QueryContext(ctx, query)
+func (c *baseClient) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return c.db.QueryContext(ctx, query, args...)
 }
 
 // Exposing ExecContext from the configured db connection.
-func (c *baseClient) ExecContext(ctx context.Context, script string) (sql.Result, error) {
-	return c.db.ExecContext(ctx, script)
+func (c *baseClient) ExecContext(ctx context.Context, script string, args ...any) (sql.Result, error) {
+	return c.db.ExecContext(ctx, script, args...)
 }
 
-// PersistActionSql generates SQL to record a migration action.
-func (c *baseClient) PersistActionSql(m Migration) string {
-	action := strings.ToLower(m.Action)
-	if action == "do" {
-		runAt := time.Now().UTC().Format("2006-01-02 15:04:05")
-		return fmt.Sprintf(`
-          INSERT INTO %s (version, name, md5, run_at)
-          VALUES (%d, '%s', '%s', '%s');
-        `, c.quotedSchemaTable(), m.Version, m.Name, m.Md5, runAt)
-	} else if action == "undo" {
-		return fmt.Sprintf(`
-          DELETE FROM %s
-          WHERE version = %d;
-        `, c.quotedSchemaTable(), m.Version)
+// PersistActionSql generates a statement to record a migration action.
+func (c *baseClient) PersistActionSql(m Migration) Statement {
+	switch strings.ToLower(m.Action) {
+	case "do":
+		return Statement{
+			SQL: fmt.Sprintf("INSERT INTO %s (version, name, md5, run_at) VALUES (%s, %s, %s, %s);",
+				c.quotedSchemaTable(), c.placeholder(1), c.placeholder(2), c.placeholder(3), c.placeholder(4)),
+			Args: []any{m.Version, m.Name, m.Md5, time.Now().UTC().Format("2006-01-02 15:04:05")},
+		}
+	case "undo":
+		return Statement{
+			SQL:  fmt.Sprintf("DELETE FROM %s WHERE version = %s;", c.quotedSchemaTable(), c.placeholder(1)),
+			Args: []any{m.Version},
+		}
+	default:
+		return Statement{SQL: "/* unknown migration action */"}
 	}
-	return fmt.Sprintf("/* unknown migration action: %s */", m.Action)
 }
 
-// GetMd5Sql returns SQL to fetch the MD5 checksum for a migration version.
-func (c *baseClient) GetMd5Sql(m Migration) string {
-	return fmt.Sprintf(`
-      SELECT md5
-      FROM %s
-      WHERE version = %d;
-    `, c.quotedSchemaTable(), m.Version)
+// GetMd5Sql returns a statement to fetch the checksum for a bound migration version.
+func (c *baseClient) GetMd5Sql(m Migration) Statement {
+	return Statement{
+		SQL:  fmt.Sprintf("SELECT md5 FROM %s WHERE version = %s;", c.quotedSchemaTable(), c.placeholder(1)),
+		Args: []any{m.Version},
+	}
 }
 
-// GetDatabaseVersionSql returns SQL to fetch the highest applied migration version.
-func (c *baseClient) GetDatabaseVersionSql() string {
-	return fmt.Sprintf(`
-      SELECT version
-      FROM %s
-      ORDER BY version DESC
-      LIMIT 1;
-    `, c.quotedSchemaTable())
+// GetDatabaseVersionSql returns a statement to fetch the highest applied version.
+func (c *baseClient) GetDatabaseVersionSql() Statement {
+	return Statement{SQL: fmt.Sprintf("SELECT version FROM %s ORDER BY version DESC LIMIT 1;", c.quotedSchemaTable())}
 }
 
 // HasVersionTable checks for the existence of the migration table.
 func (c *baseClient) HasVersionTable(ctx context.Context) (bool, error) {
 	query := c.getColumnsSqlFn()
-	rows, err := c.QueryContext(ctx, query)
+	rows, err := c.QueryContext(ctx, query.SQL, query.Args...)
 	if err != nil {
 		return false, err
 	}
@@ -126,13 +137,13 @@ func (c *baseClient) HasVersionTable(ctx context.Context) (bool, error) {
 	if rows.Next() {
 		return true, nil
 	}
-	return false, nil
+	return false, rows.Err()
 }
 
 // EnsureTable creates the migration table if it does not exist and adds missing columns.
 func (c *baseClient) EnsureTable(ctx context.Context) error {
 	query := c.getColumnsSqlFn()
-	rows, err := c.QueryContext(ctx, query)
+	rows, err := c.QueryContext(ctx, query.SQL, query.Args...)
 	if err != nil {
 		return err
 	}
@@ -146,6 +157,9 @@ func (c *baseClient) EnsureTable(ctx context.Context) error {
 		}
 		columns[strings.ToLower(colName)] = true
 	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
 	var sqls []string
 	if len(columns) == 0 {
 		colType := "BIGINT"
@@ -154,7 +168,7 @@ func (c *baseClient) EnsureTable(ctx context.Context) error {
 		} else if strings.ToLower(c.cfg.Driver) == "pg" {
 			parts := strings.Split(c.cfg.SchemaTable, ".")
 			if len(parts) > 1 {
-				sqls = append(sqls, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS "%s";`, parts[0]))
+				sqls = append(sqls, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s;`, quotePostgresIdentifier(parts[0])))
 			}
 		}
 		sqls = append(sqls, fmt.Sprintf(`

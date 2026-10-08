@@ -3,6 +3,7 @@ package gostgrator
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // Sqlite3Client implements the Client interface for SQLite.
@@ -13,6 +14,8 @@ type Sqlite3Client struct {
 // NewSqlite3Client creates a SQLite client using the supplied database.
 // SchemaTable defaults to DefaultConfig.SchemaTable. The constructor selects the
 // SQLite dialect regardless of Config.Driver; the caller owns db.
+// SchemaTable is quoted as one literal table name, including any dots;
+// embedded double quotes are escaped. It is not an attached-database qualifier.
 func NewSqlite3Client(cfg Config, db *sql.DB) Client {
 	cfg.Driver = "sqlite"
 	if cfg.SchemaTable == "" {
@@ -32,11 +35,16 @@ func NewSqlite3Client(cfg Config, db *sql.DB) Client {
 	return sqliteClient
 }
 
-func (c *Sqlite3Client) getColumnsSql() string {
-	return fmt.Sprintf(`
-      SELECT name AS column_name
-      FROM pragma_table_info('%s');
-    `, c.cfg.SchemaTable)
+// SQLite treats SchemaTable as one literal identifier, including any dots.
+func quoteSQLiteIdentifier(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+func (c *Sqlite3Client) getColumnsSql() Statement {
+	return Statement{
+		SQL:  "SELECT name AS column_name FROM pragma_table_info(?);",
+		Args: []any{c.cfg.SchemaTable},
+	}
 }
 
 func (c *Sqlite3Client) getAddNameSql() string {
