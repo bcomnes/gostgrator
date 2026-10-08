@@ -2,6 +2,7 @@ package gostgrator
 
 import (
 	"database/sql"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -18,7 +19,7 @@ func TestBuiltInClientConstructorDefaultsAndDialect(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, driver := range []string{"", "unsupported", "pg", "sqlite", "sqlite3"} {
 				t.Run("driver="+driver, func(t *testing.T) {
-					for _, table := range []string{"", "custom_versions", "custom_schema.versions"} {
+					for _, table := range []string{"", "custom_versions", "custom_schema.versions", `schema '".table '"`} {
 						t.Run("table="+table, func(t *testing.T) {
 							cfg := Config{Driver: driver, SchemaTable: table}
 							client := tc.newClient(cfg, nil)
@@ -41,15 +42,15 @@ func TestBuiltInClientConstructorDefaultsAndDialect(t *testing.T) {
 							if cfg.Driver != driver || cfg.SchemaTable != table {
 								t.Fatalf("constructor mutated caller config: %+v", cfg)
 							}
-							quoted := wantTable
+							quoted := `"` + strings.ReplaceAll(wantTable, `"`, `""`) + `"`
 							if tc.dialect == "pg" {
-								quoted = `"` + strings.ReplaceAll(wantTable, ".", `"."`) + `"`
+								quoted = `"` + strings.ReplaceAll(strings.ReplaceAll(wantTable, `"`, `""`), ".", `"."`) + `"`
 							}
 							for name, query := range map[string]string{
-								"version":      client.GetDatabaseVersionSql(),
-								"checksum":     client.GetMd5Sql(Migration{Version: 1}),
-								"persist":      client.PersistActionSql(Migration{Version: 1, Action: "do"}),
-								"undo":         client.PersistActionSql(Migration{Version: 1, Action: "undo"}),
+								"version":      client.GetDatabaseVersionSql().SQL,
+								"checksum":     client.GetMd5Sql(Migration{Version: 1}).SQL,
+								"persist":      client.PersistActionSql(Migration{Version: 1, Action: "do"}).SQL,
+								"undo":         client.PersistActionSql(Migration{Version: 1, Action: "undo"}).SQL,
 								"add name":     base.getAddNameSqlFn(),
 								"add checksum": base.getAddMd5SqlFn(),
 								"add run time": base.getAddRunAtSqlFn(),
@@ -58,18 +59,26 @@ func TestBuiltInClientConstructorDefaultsAndDialect(t *testing.T) {
 									t.Errorf("%s SQL = %q; want table %s", name, query, quoted)
 								}
 							}
+							unknown := client.PersistActionSql(Migration{Action: "*/; DROP TABLE versions; --"})
+							if unknown.SQL != "/* unknown migration action */" || len(unknown.Args) != 0 {
+								t.Errorf("unknown action leaked into SQL: %+v", unknown)
+							}
 							columns := base.getColumnsSqlFn()
 							if tc.dialect == "sqlite" {
-								if !strings.Contains(columns, "pragma_table_info('"+wantTable+"')") {
-									t.Errorf("column SQL = %q", columns)
+								if !strings.Contains(columns.SQL, "pragma_table_info(?)") || !reflect.DeepEqual(columns.Args, []any{wantTable}) {
+									t.Errorf("column statement = %+v", columns)
 								}
 							} else {
 								parts := strings.Split(wantTable, ".")
-								if !strings.Contains(columns, "INFORMATION_SCHEMA.COLUMNS") || !strings.Contains(columns, "table_name = '"+parts[len(parts)-1]+"'") {
-									t.Errorf("column SQL = %q", columns)
+								schema := quoted
+								if len(parts) > 1 {
+									schema = parts[0]
 								}
-								if len(parts) > 1 && !strings.Contains(columns, "table_schema = '"+parts[0]+"'") {
-									t.Errorf("column SQL missing schema: %q", columns)
+								if !strings.Contains(columns.SQL, "table_name = $1") || !reflect.DeepEqual(columns.Args, []any{parts[len(parts)-1], schema}) {
+									t.Errorf("column statement = %+v", columns)
+								}
+								if len(parts) > 1 && !strings.Contains(columns.SQL, "table_schema = $2") {
+									t.Errorf("column SQL missing schema: %+v", columns)
 								}
 							}
 						})

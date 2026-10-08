@@ -33,7 +33,7 @@ func (c *injectionClient) record(method string) error {
 	return nil
 }
 
-func (c *injectionClient) QueryContext(ctx context.Context, query string) (*sql.Rows, error) {
+func (c *injectionClient) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	method := "query"
 	if strings.Contains(query, "SELECT md5") {
 		method = "checksum query"
@@ -41,10 +41,10 @@ func (c *injectionClient) QueryContext(ctx context.Context, query string) (*sql.
 	if err := c.record(method); err != nil {
 		return nil, err
 	}
-	return c.Client.QueryContext(ctx, query)
+	return c.Client.QueryContext(ctx, query, args...)
 }
 
-func (c *injectionClient) ExecContext(ctx context.Context, script string) (sql.Result, error) {
+func (c *injectionClient) ExecContext(ctx context.Context, script string, args ...any) (sql.Result, error) {
 	c.scripts = append(c.scripts, script)
 	method := "execute"
 	if strings.Contains(script, "injected_versions") {
@@ -53,7 +53,7 @@ func (c *injectionClient) ExecContext(ctx context.Context, script string) (sql.R
 	if err := c.record(method); err != nil {
 		return nil, err
 	}
-	return c.Client.ExecContext(ctx, script)
+	return c.Client.ExecContext(ctx, script, args...)
 }
 
 func (c *injectionClient) EnsureTable(ctx context.Context) error {
@@ -70,17 +70,17 @@ func (c *injectionClient) HasVersionTable(ctx context.Context) (bool, error) {
 	return c.Client.HasVersionTable(ctx)
 }
 
-func (c *injectionClient) GetDatabaseVersionSql() string {
+func (c *injectionClient) GetDatabaseVersionSql() Statement {
 	c.calls = append(c.calls, "version SQL")
 	return c.Client.GetDatabaseVersionSql()
 }
 
-func (c *injectionClient) GetMd5Sql(m Migration) string {
+func (c *injectionClient) GetMd5Sql(m Migration) Statement {
 	c.checksums = append(c.checksums, m)
 	return c.Client.GetMd5Sql(m)
 }
 
-func (c *injectionClient) PersistActionSql(m Migration) string {
+func (c *injectionClient) PersistActionSql(m Migration) Statement {
 	c.persisted = append(c.persisted, m)
 	return c.Client.PersistActionSql(m)
 }

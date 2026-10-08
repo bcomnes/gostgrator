@@ -14,13 +14,13 @@ import (
 
 type loggingClient struct {
 	gostgrator.Client
-	logger	*log.Logger
+	logger *log.Logger
 }
 
 var _ gostgrator.Client = (*loggingClient)(nil)
 
-func (c *loggingClient) ExecContext(ctx context.Context, script string) (sql.Result, error) {
-	result, err := c.Client.ExecContext(ctx, script)
+func (c *loggingClient) ExecContext(ctx context.Context, script string, args ...any) (sql.Result, error) {
+	result, err := c.Client.ExecContext(ctx, script, args...)
 	c.logger.Printf("SQL execution succeeded: %t", err == nil)
 	return result, err
 }
@@ -37,7 +37,7 @@ func ExampleNewGostgrator_customClient() {
 		Client: gostgrator.NewSqlite3Client(gostgrator.Config{
 			SchemaTable: "app_migrations",
 		}, db),
-		logger:	log.New(os.Stdout, "", 0),
+		logger: log.New(os.Stdout, "", 0),
 	}
 	// Use an in-memory filesystem to make the example self-contained.
 	// DiskMigrations or an embed.FS can be used with the same client.

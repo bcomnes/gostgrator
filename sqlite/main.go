@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/bcomnes/gostgrator/v2"
-	_ "modernc.org/sqlite"	// SQLite driver
+	_ "modernc.org/sqlite" // SQLite driver
 )
 
 var versionString = gostgrator.Version
@@ -257,7 +257,7 @@ func loadConfig(path string, cfg *gostgrator.Config) error {
 }
 
 func dropSchema(ctx context.Context, cfg gostgrator.Config, g *gostgrator.Gostgrator) error {
-	query := fmt.Sprintf("DROP TABLE %s", cfg.SchemaTable)
+	query := `DROP TABLE "` + strings.ReplaceAll(cfg.SchemaTable, `"`, `""`) + `"`
 	_, err := g.QueryContext(ctx, query)
 	return err
 }

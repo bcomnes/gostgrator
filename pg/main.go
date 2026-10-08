@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"	// PostgreSQL driver
+	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver
 
 	"github.com/bcomnes/gostgrator/v2"
 )
@@ -270,14 +270,11 @@ func loadConfig(path string, cfg *gostgrator.Config) error {
 
 // dropSchema drops the schema version table.
 func dropSchema(ctx context.Context, cfg gostgrator.Config, g *gostgrator.Gostgrator) error {
-	var table string
-	if strings.Contains(cfg.SchemaTable, ".") {
-		parts := strings.Split(cfg.SchemaTable, ".")
-		table = fmt.Sprintf(`"%s"."%s"`, parts[0], parts[1])
-	} else {
-		table = fmt.Sprintf(`"%s"`, cfg.SchemaTable)
+	parts := strings.Split(cfg.SchemaTable, ".")
+	for i, part := range parts {
+		parts[i] = `"` + strings.ReplaceAll(part, `"`, `""`) + `"`
 	}
-	query := fmt.Sprintf("DROP TABLE %s", table)
+	query := "DROP TABLE " + strings.Join(parts, ".")
 	_, err := g.QueryContext(ctx, query)
 	return err
 }

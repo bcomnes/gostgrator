@@ -99,9 +99,9 @@ func (g *Gostgrator) GetMigrations() ([]Migration, error) {
 	return migs, nil
 }
 
-// QueryContext is a helper to execute a query using the underlying client.
-func (g *Gostgrator) QueryContext(ctx context.Context, query string) (*sql.Rows, error) {
-	return g.client.QueryContext(ctx, query)
+// QueryContext executes a query with bound args using the underlying client.
+func (g *Gostgrator) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return g.client.QueryContext(ctx, query, args...)
 }
 
 // GetDatabaseVersion returns the current database version.
@@ -115,7 +115,7 @@ func (g *Gostgrator) GetDatabaseVersion(ctx context.Context) (int, error) {
 	if !initialized {
 		return 0, nil
 	}
-	rows, err := g.client.QueryContext(ctx, versionSql)
+	rows, err := g.client.QueryContext(ctx, versionSql.SQL, versionSql.Args...)
 	if err != nil {
 		return 0, err
 	}
@@ -168,7 +168,7 @@ func (g *Gostgrator) ValidateMigrations(ctx context.Context, databaseVersion int
 	for _, m := range g.migrations {
 		if m.Action == "do" && m.Version > 0 && m.Version <= databaseVersion {
 			query := g.client.GetMd5Sql(m)
-			rows, err := g.client.QueryContext(ctx, query)
+			rows, err := g.client.QueryContext(ctx, query.SQL, query.Args...)
 			if err != nil {
 				return err
 			}
@@ -200,7 +200,7 @@ func (g *Gostgrator) RunMigrations(ctx context.Context, migrations []Migration) 
 			return applied, err
 		}
 		persistSQL := g.client.PersistActionSql(m)
-		if _, err := g.client.ExecContext(ctx, persistSQL); err != nil {
+		if _, err := g.client.ExecContext(ctx, persistSQL.SQL, persistSQL.Args...); err != nil {
 			return applied, err
 		}
 		applied = append(applied, m)
