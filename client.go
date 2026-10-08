@@ -29,10 +29,15 @@ func isSQLiteDriver(driver string) bool {
 	}
 }
 
-// Statement contains SQL and its bound values. Placeholders are dialect-specific;
-// identifiers must be quoted by the client, not passed in Args.
+// Statement contains SQL text and the arguments to bind when executing it.
+// It is not a prepared statement (sql.Stmt) and holds no database resources.
+// Placeholders are dialect-specific; identifiers must be quoted by the client,
+// not passed in Args.
 type Statement struct {
-	SQL  string
+	// SQL is the query text, with placeholders matching the client's dialect.
+	SQL string
+	// Args contains values forwarded to QueryContext or ExecContext.
+	// It may be nil when SQL requires no bound arguments.
 	Args []any
 }
 
