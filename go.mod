@@ -5,7 +5,7 @@ go 1.26.0
 tool github.com/bcomnes/goversion/v2
 
 require (
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	modernc.org/sqlite v1.61.1
 )
 
