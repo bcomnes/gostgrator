@@ -6,7 +6,7 @@ tool github.com/bcomnes/goversion/v2
 
 require (
 	github.com/jackc/pgx/v5 v5.13.0
-	modernc.org/sqlite v1.62.0
+	modernc.org/sqlite v1.63.0
 )
 
 require (
